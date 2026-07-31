@@ -1,7 +1,26 @@
 -- PhysicsDesk Database Schema for Supabase (Centaurus Academy)
+-- Safe to run multiple times — uses IF NOT EXISTS throughout
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- =============================================
+-- DROP OLD CONFLICTING TABLES (if they exist from previous schema)
+-- =============================================
+DROP TABLE IF EXISTS reports CASCADE;
+DROP TABLE IF EXISTS ai_suggestions CASCADE;
+DROP TABLE IF EXISTS submissions CASCADE;
+DROP TABLE IF EXISTS assignments CASCADE;
+DROP TABLE IF EXISTS attendance CASCADE;
+DROP TABLE IF EXISTS uploads CASCADE;
+DROP TABLE IF EXISTS students CASCADE;
+DROP TABLE IF EXISTS classes CASCADE;
+DROP TABLE IF EXISTS curriculum_levels CASCADE;
+DROP TABLE IF EXISTS teachers CASCADE;
+DROP TABLE IF EXISTS teacher_profile CASCADE;
+
+-- =============================================
 -- TEACHER PROFILE
+-- =============================================
 CREATE TABLE teachers (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
@@ -15,7 +34,9 @@ CREATE POLICY "Teacher reads own profile" ON teachers FOR SELECT USING (auth.uid
 CREATE POLICY "Teacher updates own profile" ON teachers FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Teacher inserts own profile" ON teachers FOR INSERT WITH CHECK (auth.uid() = id);
 
+-- =============================================
 -- CURRICULUM LEVELS
+-- =============================================
 CREATE TABLE curriculum_levels (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -26,20 +47,26 @@ CREATE TABLE curriculum_levels (
 ALTER TABLE curriculum_levels ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own levels" ON curriculum_levels FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- CLASSES
+-- =============================================
 CREATE TABLE classes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
   curriculum_level_id UUID REFERENCES curriculum_levels(id),
   name TEXT NOT NULL,
+  subject TEXT DEFAULT 'Physics',
   academic_year TEXT,
+  schedule JSONB DEFAULT '{}',
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own classes" ON classes FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- STUDENTS
+-- =============================================
 CREATE TABLE students (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -53,15 +80,17 @@ CREATE TABLE students (
 ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own students" ON students FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- UPLOADED FILES
+-- =============================================
 CREATE TABLE uploads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
   file_name TEXT NOT NULL,
   file_type TEXT NOT NULL,
   storage_url TEXT NOT NULL,
-  detected_data_type TEXT,    -- 'attendance' | 'grades' | 'assignment' | 'student_list' | 'exam_results' | 'unknown'
-  parsed_data JSONB,          -- structured data extracted from the file
+  detected_data_type TEXT,
+  parsed_data JSONB,
   parse_status TEXT DEFAULT 'pending' CHECK (parse_status IN ('pending', 'processing', 'complete', 'failed')),
   parse_error TEXT,
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
@@ -69,7 +98,9 @@ CREATE TABLE uploads (
 ALTER TABLE uploads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own uploads" ON uploads FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- ATTENDANCE
+-- =============================================
 CREATE TABLE attendance (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -83,7 +114,9 @@ CREATE TABLE attendance (
 ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own attendance" ON attendance FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- ASSIGNMENTS
+-- =============================================
 CREATE TABLE assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -103,7 +136,9 @@ CREATE TABLE assignments (
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own assignments" ON assignments FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- SUBMISSIONS
+-- =============================================
 CREATE TABLE submissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -111,18 +146,21 @@ CREATE TABLE submissions (
   student_id UUID REFERENCES students(id) ON DELETE CASCADE,
   upload_id UUID REFERENCES uploads(id),
   content TEXT,
+  file_url TEXT,
   marks_obtained NUMERIC(5,2),
   ai_suggested_marks NUMERIC(5,2),
   feedback TEXT,
   ai_feedback TEXT,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'ai_checked', 'teacher_reviewed', 'returned')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'ai_checked', 'teacher_reviewed', 'returned', 'checked')),
   submitted_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(assignment_id, student_id)
 );
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own submissions" ON submissions FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- AI SUGGESTIONS
+-- =============================================
 CREATE TABLE ai_suggestions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -137,7 +175,7 @@ CREATE TABLE ai_suggestions (
   )),
   title TEXT NOT NULL,
   content JSONB NOT NULL,
-  related_id TEXT,            -- id of related student, class, assignment etc
+  related_id TEXT,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'modified')),
   teacher_note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -146,7 +184,9 @@ CREATE TABLE ai_suggestions (
 ALTER TABLE ai_suggestions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own suggestions" ON ai_suggestions FOR ALL USING (auth.uid() = teacher_id);
 
+-- =============================================
 -- REPORTS
+-- =============================================
 CREATE TABLE reports (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -161,7 +201,9 @@ CREATE TABLE reports (
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teacher manages own reports" ON reports FOR ALL USING (auth.uid() = teacher_id);
 
--- AUTH TRIGGER
+-- =============================================
+-- AUTO-CREATE TEACHER PROFILE ON SIGNUP
+-- =============================================
 CREATE OR REPLACE FUNCTION handle_new_teacher()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -178,16 +220,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_teacher_signup
+DROP TRIGGER IF EXISTS on_teacher_signup ON auth.users;
+CREATE TRIGGER on_teacher_signup
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_teacher();
 
--- Indexes for maximum query performance
-CREATE INDEX idx_students_class ON students(class_id);
-CREATE INDEX idx_attendance_student ON attendance(student_id);
-CREATE INDEX idx_attendance_class_date ON attendance(class_id, session_date);
-CREATE INDEX idx_assignments_class ON assignments(class_id);
-CREATE INDEX idx_submissions_assignment ON submissions(assignment_id);
-CREATE INDEX idx_submissions_student ON submissions(student_id);
-CREATE INDEX idx_suggestions_teacher_status ON ai_suggestions(teacher_id, status);
-CREATE INDEX idx_uploads_teacher ON uploads(teacher_id);
+-- =============================================
+-- PERFORMANCE INDEXES
+-- =============================================
+CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_class_date ON attendance(class_id, session_date);
+CREATE INDEX IF NOT EXISTS idx_assignments_class ON assignments(class_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_id);
+CREATE INDEX IF NOT EXISTS idx_suggestions_teacher_status ON ai_suggestions(teacher_id, status);
+CREATE INDEX IF NOT EXISTS idx_uploads_teacher ON uploads(teacher_id);
