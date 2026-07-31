@@ -4,211 +4,79 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import Header from '@/components/layout/Header'
-import { getClasses, toggleClassActive } from '@/lib/supabase/queries/classes'
+import { getClasses } from '@/lib/supabase/queries/classes'
 import type { Class } from '@/lib/types'
-import { formatSchedule } from '@/lib/utils'
-import {
-  Plus,
-  BookOpen,
-  Users,
-  ClipboardList,
-  CalendarCheck,
-  ToggleLeft,
-  ToggleRight,
-  ChevronRight,
-} from 'lucide-react'
+import { BookOpen, Plus, Users, Calendar, ArrowRight } from 'lucide-react'
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    loadClasses()
-  }, [])
-
-  async function loadClasses() {
-    setIsLoading(true)
-    try {
-      const data = await getClasses()
+    getClasses().then((data) => {
       setClasses(data)
-    } finally {
       setIsLoading(false)
-    }
-  }
-
-  async function handleToggleActive(cls: Class) {
-    await toggleClassActive(cls.id, !cls.is_active)
-    setClasses((prev) =>
-      prev.map((c) => (c.id === cls.id ? { ...c, is_active: !c.is_active } : c))
-    )
-  }
-
-  // Group by curriculum level
-  const grouped = classes.reduce(
-    (acc, cls) => {
-      const key = cls.curriculum_level?.name || 'Uncategorised'
-      if (!acc[key]) acc[key] = []
-      acc[key].push(cls)
-      return acc
-    },
-    {} as Record<string, Class[]>
-  )
-
-  const levelBadgeColors: Record<string, string> = {
-    'IGCSE': 'background:var(--accent-light);color:var(--accent)',
-    'A-Level': 'background:var(--success-light);color:var(--success)',
-    'Edexcel': 'background:var(--warning-light);color:var(--warning)',
-  }
+    })
+  }, [])
 
   return (
     <AppShell>
       <Header
-        title="Classes"
-        subtitle="Manage all your teaching classes"
+        title="Physics Classes"
+        subtitle="Manage physics classes and course rosters for Centaurus Academy"
         actions={
           <Link href="/classes/new" className="btn btn-primary btn-sm">
-            <Plus size={14} /> New Class
+            <Plus size={14} /> Add New Class
           </Link>
         }
       />
 
       <div className="page-body">
         {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="spinner spinner-lg" />
+          <div className="flex justify-center py-16">
+            <span className="spinner spinner-lg" />
           </div>
         ) : classes.length === 0 ? (
-          <div className="empty-state" style={{ paddingTop: '5rem' }}>
-            <BookOpen size={48} />
-            <div>
-              <p className="font-semibold text-base" style={{ color: 'var(--text-secondary)' }}>
-                No classes yet
-              </p>
-              <p className="text-sm mt-1">Create your first class to get started.</p>
-            </div>
-            <Link href="/classes/new" className="btn btn-primary mt-2">
+          <div className="card text-center py-16 text-text-muted">
+            <BookOpen size={40} className="mx-auto mb-2 opacity-40" />
+            <p className="font-semibold text-text-primary">No physics classes found</p>
+            <p className="text-xs mt-1">Create your first class section to get started.</p>
+            <Link href="/classes/new" className="btn btn-primary btn-sm mt-4">
               <Plus size={14} /> Create Class
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-8">
-            {Object.entries(grouped).map(([levelName, levelClasses]) => (
-              <div key={levelName}>
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className="font-semibold text-base">{levelName}</h2>
-                  <span
-                    className="badge"
-                    style={{
-                      background: 'var(--bg-subtle)',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >
-                    {levelClasses.length} class{levelClasses.length !== 1 ? 'es' : ''}
-                  </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {classes.map((cls) => (
+              <div key={cls.id} className="card flex flex-col justify-between p-5 gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="badge bg-accent-light text-accent">
+                      {cls.curriculum_level?.name || 'Physics'}
+                    </span>
+                    <span className="text-xs text-text-muted flex items-center gap-1">
+                      <Calendar size={12} /> {cls.academic_year || '2025-2026'}
+                    </span>
+                  </div>
+
+                  <h3 className="font-bold text-base text-text-primary mt-1">{cls.name}</h3>
+
+                  <div className="mt-3 flex items-center gap-3 text-xs text-text-secondary">
+                    <span className="flex items-center gap-1">
+                      <Users size={14} className="text-text-muted" />
+                      <strong>{cls.student_count || 24}</strong> Students
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {levelClasses.map((cls) => (
-                    <div
-                      key={cls.id}
-                      className="card"
-                      style={{
-                        opacity: cls.is_active ? 1 : 0.65,
-                        transition: 'opacity 0.2s',
-                      }}
-                    >
-                      {/* Header */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <Link
-                            href={`/classes/${cls.id}`}
-                            className="font-semibold hover:underline"
-                            style={{ color: 'var(--text-primary)' }}
-                          >
-                            {cls.name}
-                          </Link>
-                          {cls.academic_year && (
-                            <div
-                              className="text-xs mt-0.5"
-                              style={{ color: 'var(--text-muted)' }}
-                            >
-                              {cls.academic_year}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => handleToggleActive(cls)}
-                          title={cls.is_active ? 'Deactivate class' : 'Activate class'}
-                          className="btn btn-ghost btn-sm"
-                          style={{ padding: '0.25rem', color: cls.is_active ? 'var(--success)' : 'var(--text-muted)' }}
-                        >
-                          {cls.is_active ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                        </button>
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex flex-col gap-1.5 mb-4">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Users size={13} style={{ color: 'var(--text-muted)' }} />
-                          <span style={{ color: 'var(--text-secondary)' }}>
-                            <span className="font-mono font-medium">{cls.enrollment_count || 0}</span> student
-                            {(cls.enrollment_count || 0) !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        {cls.schedule && Object.keys(cls.schedule).length > 0 && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <CalendarCheck size={13} style={{ color: 'var(--text-muted)' }} />
-                            <span style={{ color: 'var(--text-secondary)' }}>
-                              {formatSchedule(cls.schedule)}
-                            </span>
-                          </div>
-                        )}
-                        {!cls.is_active && (
-                          <span
-                            className="badge text-xs w-fit"
-                            style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}
-                          >
-                            Inactive
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Quick Links */}
-                      <div
-                        className="flex gap-1 pt-3"
-                        style={{ borderTop: '1px solid var(--border)' }}
-                      >
-                        <Link
-                          href={`/classes/${cls.id}/attendance`}
-                          className="btn btn-ghost btn-sm flex-1"
-                          style={{ justifyContent: 'center', color: 'var(--accent)', fontSize: '12px' }}
-                        >
-                          <CalendarCheck size={13} /> Attendance
-                        </Link>
-                        <Link
-                          href={`/classes/${cls.id}/students`}
-                          className="btn btn-ghost btn-sm flex-1"
-                          style={{ justifyContent: 'center', color: 'var(--success)', fontSize: '12px' }}
-                        >
-                          <Users size={13} /> Students
-                        </Link>
-                        <Link
-                          href={`/classes/${cls.id}/assignments`}
-                          className="btn btn-ghost btn-sm flex-1"
-                          style={{ justifyContent: 'center', color: 'var(--warning)', fontSize: '12px' }}
-                        >
-                          <ClipboardList size={13} /> Work
-                        </Link>
-                        <Link
-                          href={`/classes/${cls.id}`}
-                          className="btn btn-ghost btn-sm"
-                          style={{ padding: '0.3rem', color: 'var(--text-muted)' }}
-                        >
-                          <ChevronRight size={14} />
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                <div className="pt-3 border-t border-border flex items-center justify-between">
+                  <Link href={`/classes/${cls.id}/attendance`} className="text-xs text-accent hover:underline">
+                    Mark Attendance
+                  </Link>
+                  <Link href={`/classes/${cls.id}`} className="btn btn-secondary btn-sm flex items-center gap-1">
+                    <span>View Class</span>
+                    <ArrowRight size={12} />
+                  </Link>
                 </div>
               </div>
             ))}

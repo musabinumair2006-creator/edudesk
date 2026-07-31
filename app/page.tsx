@@ -22,7 +22,8 @@ export default function HomePage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-bg-base">
       <div className="flex flex-col items-center gap-4">
-        <div className="text-2xl font-bold text-text-primary">⚡ EduDesk</div>
+        <div className="text-2xl font-bold text-text-primary">⚡ PhysicsDesk</div>
+        <div className="text-xs text-text-muted">Centaurus Academy Assistant</div>
         <div className="spinner spinner-lg" />
       </div>
     </div>

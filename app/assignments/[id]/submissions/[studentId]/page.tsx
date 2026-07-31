@@ -89,7 +89,7 @@ export default function SubmissionReviewPage() {
   function acceptAISuggestion() {
     if (!aiResult) return
     setMarks(aiResult.marks_awarded)
-    setFeedback(aiResult.feedback)
+    setFeedback(aiResult.detailed_feedback || aiResult.feedback || '')
   }
 
   async function handleSave(status: 'checked' | 'returned') {
@@ -272,7 +272,7 @@ export default function SubmissionReviewPage() {
                   </div>
 
                   <div className="text-sm mb-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                    {aiResult.feedback}
+                    {aiResult.detailed_feedback || aiResult.feedback}
                   </div>
 
                   {aiResult.strengths.length > 0 && (

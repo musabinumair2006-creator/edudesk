@@ -1,10 +1,11 @@
-// EduDesk — Complete TypeScript Type Definitions
+// PhysicsDesk — Complete TypeScript Type Definitions (Centaurus Academy)
 
 export interface TeacherProfile {
   id: string
   full_name: string
   email: string
-  academy_name: string | null
+  subject: string
+  academy_name: string
   created_at: string
 }
 
@@ -21,49 +22,56 @@ export interface Class {
   teacher_id: string
   curriculum_level_id: string | null
   name: string
-  subject: string
   academic_year: string | null
-  schedule: ClassSchedule
   is_active: boolean
   created_at: string
-  // Joined
+  // Joined fields
   curriculum_level?: CurriculumLevel
-  enrollment_count?: number
-}
-
-export interface ClassSchedule {
-  days: string[]
-  time: string
+  student_count?: number
 }
 
 export interface Student {
   id: string
   teacher_id: string
+  class_id: string | null
   full_name: string
   roll_number: string | null
   email: string | null
-  phone: string | null
-  parent_phone: string | null
-  date_of_birth: string | null
-  enrolled_at: string
   is_active: boolean
-  // Joined
-  enrollments?: Enrollment[]
+  created_at: string
+  // Joined fields
+  class?: Class
   attendance_summary?: AttendanceSummary
 }
 
-export interface Enrollment {
+export type UploadDataType =
+  | 'attendance'
+  | 'attendance_records'
+  | 'grades'
+  | 'grade_sheet'
+  | 'assignment'
+  | 'assignment_submission'
+  | 'student_list'
+  | 'exam_results'
+  | 'unknown'
+
+export type ParseStatus = 'pending' | 'processing' | 'complete' | 'failed'
+
+export interface Upload {
   id: string
-  student_id: string
-  class_id: string
   teacher_id: string
-  enrolled_at: string
-  // Joined
-  student?: Student
-  class?: Class
+  file_name: string
+  file_type: string
+  storage_url: string
+  detected_data_type: UploadDataType | null
+  parsed_data: ParsedDataResult | null
+  parse_status: ParseStatus
+  parse_error: string | null
+  uploaded_at: string
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
+export type AttendanceSource = 'manual' | 'imported'
 
 export interface Attendance {
   id: string
@@ -71,12 +79,11 @@ export interface Attendance {
   class_id: string
   student_id: string
   session_date: string
-  session_label: string | null
   status: AttendanceStatus
-  note: string | null
-  marked_at: string
+  source: AttendanceSource
   // Joined
   student?: Student
+  class?: Class
 }
 
 export interface AttendanceSummary {
@@ -89,20 +96,23 @@ export interface AttendanceSummary {
 }
 
 export type AssignmentType = 'assignment' | 'quiz' | 'midterm' | 'finalterm' | 'classwork'
+export type AssignmentStatus = 'draft' | 'approved' | 'distributed'
 
 export interface Assignment {
   id: string
   teacher_id: string
   class_id: string
   title: string
-  instructions: string
+  content: string
   topic: string | null
   curriculum_level_id: string | null
   total_marks: number
   due_date: string | null
   assignment_type: AssignmentType
+  status: AssignmentStatus
   ai_generated: boolean
   answer_key: string | null
+  instructions?: string
   created_at: string
   // Joined
   class?: Class
@@ -111,23 +121,48 @@ export interface Assignment {
   checked_count?: number
 }
 
-export type SubmissionStatus = 'submitted' | 'checked' | 'returned'
+export type SubmissionStatus = 'pending' | 'ai_checked' | 'teacher_reviewed' | 'returned'
 
 export interface Submission {
   id: string
   teacher_id: string
   assignment_id: string
   student_id: string
+  upload_id: string | null
   content: string | null
-  file_url: string | null
-  submitted_at: string
   marks_obtained: number | null
+  ai_suggested_marks: number | null
   feedback: string | null
-  ai_checked: boolean
+  ai_feedback: string | null
   status: SubmissionStatus
+  submitted_at: string
   // Joined
   student?: Student
   assignment?: Assignment
+}
+
+export type AISuggestionType =
+  | 'generated_assignment'
+  | 'generated_paper'
+  | 'submission_feedback'
+  | 'student_report'
+  | 'class_report'
+  | 'attendance_alert'
+  | 'performance_flag'
+
+export type AISuggestionStatus = 'pending' | 'approved' | 'rejected' | 'modified'
+
+export interface AISuggestion {
+  id: string
+  teacher_id: string
+  suggestion_type: AISuggestionType
+  title: string
+  content: any // JSON structure depending on type
+  related_id: string | null
+  status: AISuggestionStatus
+  teacher_note: string | null
+  created_at: string
+  reviewed_at: string | null
 }
 
 export type ReportType = 'weekly' | 'monthly' | 'midterm' | 'final' | 'student' | 'class'
@@ -148,105 +183,127 @@ export interface Report {
 }
 
 export interface ReportContent {
-  summary: string
-  performance_rating: 'Excellent' | 'Good' | 'Satisfactory' | 'Needs Improvement' | string
-  highlights: string[]
-  concerns: string[]
+  executive_summary: string
+  attendance_analysis?: string
+  performance_analysis?: string
+  strengths: string[]
+  areas_to_improve: string[]
   recommendations: string[]
-  next_steps: string[]
-  data?: ReportData
+  overall_rating: 'Excellent' | 'Good' | 'Satisfactory' | 'Needs Improvement' | string
+  overall_percentage?: number
 }
 
-export interface ReportData {
-  attendance_summary?: AttendanceSummary
-  average_marks?: number
-  submission_rate?: number
-  assignments?: Array<{ title: string; marks: number; total: number; date: string }>
-  top_performers?: Array<{ name: string; average: number }>
-  students_needing_attention?: Array<{ name: string; issue: string }>
+// Parsed Data Structures
+export interface ParsedDataResult {
+  detected_type: UploadDataType
+  confidence: number
+  class_name: string | null
+  extracted_data: {
+    students?: Array<{
+      name: string
+      roll_number?: string
+      email?: string
+      date?: string
+      status?: AttendanceStatus
+      scores?: Array<{
+        assessment_name: string
+        marks_obtained: number
+        total_marks: number
+      }>
+      total_marks_obtained?: number
+      total_marks?: number
+      percentage?: number
+      grade?: string
+    }>
+    [key: string]: any
+  }
+  warnings: string[]
+  suggestions: string[]
 }
 
-export interface Paper {
+// Performance Analyzer Result
+export interface PerformanceAnalysisResult {
+  automatic_flags: {
+    low_attendance: Array<{ student_name: string; percentage: number; sessions_missed: number }>
+    declining_performance: Array<{ student_name: string; last_three_scores: number[]; trend: string }>
+    missing_submissions: Array<{ student_name: string; missing_count: number }>
+    class_average: number
+    class_average_status: 'above_threshold' | 'below_threshold'
+    hardest_assessment: { name: string; class_average: number }
+  }
+  suggestions_for_approval: {
+    intervention_messages: Array<{ student_name: string; message: string }>
+    topics_to_revisit: string[]
+    difficulty_recommendation: string
+  }
+}
+
+// Lesson Plan Types
+export interface LessonPlanContent {
+  overview?: string
+  objectives?: string[]
+  learning_objectives?: string[]
+  prerequisites?: string[]
+  materials_needed?: string[]
+  key_equations_and_terms?: string[]
+  timeline?: any[]
+  key_concepts?: Array<{ concept: string; explanation: string; example: string }>
+  common_misconceptions?: Array<{ misconception: string; correction: string } | string>
+  practical_experiment?: any
+  formative_assessment?: string[]
+  discussion_starters?: string[]
+  differentiation?: { support: string; extension: string }
+  homework_suggestion?: string
+  homework_assignment?: any
+}
+
+export interface LessonPlan {
   id: string
   teacher_id: string
+  class_id?: string
   title: string
-  paper_type: 'midterm' | 'finalterm'
-  curriculum_level_id: string | null
-  topics: string[]
-  total_marks: number | null
-  time_allowed: string | null
-  content: PaperContent
-  created_at: string
-  curriculum_level?: CurriculumLevel
-}
-
-export interface PaperContent {
-  cover_page: {
-    subject: string
-    level: string
-    paper_type: string
-    total_marks: number
-    time_allowed: string
-    instructions: string[]
-  }
-  sections: PaperSection[]
-  mark_scheme: MarkSchemeItem[]
-}
-
-export interface PaperSection {
-  label: string
-  title: string
-  instructions: string
-  questions: PaperQuestion[]
-}
-
-export interface PaperQuestion {
-  number: number
-  question: string
-  marks: number
-  sub_questions?: Array<{ label: string; question: string; marks: number }>
-}
-
-export interface MarkSchemeItem {
-  question_number: number
-  answer: string
-  marks: number
-  marking_points?: string[]
-}
-
-// AI Types
-export interface AIAssignmentRequest {
-  curriculum_level: string
   topic: string
-  assignment_type: string
-  num_questions: number
-  total_marks: number
-  difficulty: 'foundation' | 'standard' | 'challenging'
+  curriculum_level_id?: string
+  duration_minutes: number
+  target_audience?: string
+  content: LessonPlanContent
+  status?: 'draft' | 'published' | string
+  ai_generated?: boolean
+  created_at: string
 }
 
-export interface AIAssignmentResponse {
-  title: string
-  instructions: string
-  questions: AIQuestion[]
-  total_marks: number
-  estimated_time: string
-  answer_key: string
+export interface AILessonPlanRequest {
+  topic: string
+  curriculum_level?: string
+  duration_minutes?: number
+  target_audience?: string
+  specific_requirements?: string
+  include_practical?: boolean
+  difficulty?: string
+  special_instructions?: string
 }
 
-export interface AIQuestion {
-  number: number
-  type: 'mcq' | 'short' | 'structured' | 'calculation'
-  question: string
-  marks: number
-  answer: string
-  options?: string[]
-}
+// LMS Integration Types
+export type LMSProvider = 'google_classroom' | 'canvas' | 'moodle' | 'ms_teams' | 'custom'
 
-export interface AISubmissionCheckRequest {
-  question_content: string
-  student_answer: string
-  total_marks: number
-  curriculum_level: string
+export interface LMSConnection {
+  id: string
+  teacher_id: string
+  provider: LMSProvider
+  school_name?: string
+  academy_name?: string
+  portal_url: string
+  account_email?: string
+  is_connected?: boolean
+  gradebook_url?: string
+  coursework_url?: string
+  attendance_url?: string
+  live_class_url?: string
+  notes?: string
+  access_token?: string | null
+  status?: string
+  created_at?: string
+  last_synced_at?: string
 }
 
 export interface AISubmissionCheckResponse {
@@ -254,61 +311,19 @@ export interface AISubmissionCheckResponse {
   total_marks: number
   percentage: number
   grade: string
-  feedback: string
+  feedback?: string
+  detailed_feedback: string
   strengths: string[]
   areas_to_improve: string[]
   misconceptions: string[]
   topics_to_review: string[]
+  [key: string]: any
 }
 
-export interface AIPaperRequest {
-  paper_type: 'midterm' | 'finalterm'
-  curriculum_level: string
-  topics: string[]
-  total_marks: number
-  time_allowed: string
-  num_sections: number
-  instructions: string
-}
-
-export interface AIReportRequest {
-  report_type: ReportType
-  student_id?: string
-  class_id?: string
-  period_start: string
-  period_end: string
-}
-
-// Dashboard Types
+// Dashboard Stat Counters
 export interface DashboardStats {
-  classes_today: number
-  total_students: number
-  pending_submissions: number
-  assignments_due_this_week: number
-}
-
-export interface TodayClass {
-  id: string
-  name: string
-  curriculum_level: string
-  time: string
-  student_count: number
-}
-
-export interface PendingSubmission {
-  id: string
-  student_name: string
-  assignment_title: string
-  class_name: string
-  submitted_at: string
-  assignment_id: string
-  student_id: string
-}
-
-export interface RecentActivity {
-  id: string
-  type: 'attendance' | 'assignment' | 'submission' | 'report'
-  description: string
-  timestamp: string
-  link?: string
+  pending_suggestions_count: number
+  assignments_this_month: number
+  total_active_students: number
+  files_processed_this_week: number
 }

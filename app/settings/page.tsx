@@ -4,141 +4,111 @@ import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import Header from '@/components/layout/Header'
 import { useApp } from '@/context/AppContext'
-import { createClient } from '@/lib/supabase/client'
-import { Plus, Trash2, CheckCircle } from 'lucide-react'
-
-interface LevelDraft {
-  id?: string
-  name: string
-  description: string
-  isNew?: boolean
-}
+import { getCurriculumLevels, updateTeacherProfile } from '@/lib/supabase/queries/teachers'
+import { getStudents } from '@/lib/supabase/queries/students'
+import { getAssignments } from '@/lib/supabase/queries/assignments'
+import { getUploads } from '@/lib/supabase/queries/uploads'
+import type { CurriculumLevel } from '@/lib/types'
+import { downloadCSV } from '@/lib/utils'
+import { Settings, Save, Plus, Download, Trash2, CheckCircle } from 'lucide-react'
 
 export default function SettingsPage() {
-  const { profile, curriculumLevels, refreshProfile, refreshCurriculumLevels } = useApp()
-  const supabase = createClient()
+  const { profile, refreshProfile } = useApp()
 
-  const [academyName, setAcademyName] = useState(profile?.academy_name || '')
-  const [fullName, setFullName] = useState(profile?.full_name || '')
-  const [levels, setLevels] = useState<LevelDraft[]>([])
+  // Profile Form
+  const [fullName, setFullName] = useState('')
+  const [academyName, setAcademyName] = useState('')
+  const [subject, setSubject] = useState('')
   const [isSavingProfile, setIsSavingProfile] = useState(false)
-  const [isSavingLevels, setIsSavingLevels] = useState(false)
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  function showToast(msg: string, type: 'success' | 'error' = 'success') {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
-  }
+  // Curriculum levels
+  const [levels, setLevels] = useState<CurriculumLevel[]>([])
+  const [newLevelName, setNewLevelName] = useState('')
+  const [newLevelDesc, setNewLevelDesc] = useState('')
 
   useEffect(() => {
-    setAcademyName(profile?.academy_name || '')
-    setFullName(profile?.full_name || '')
+    if (profile) {
+      setFullName(profile.full_name || '')
+      setAcademyName(profile.academy_name || '')
+      setSubject(profile.subject || '')
+    }
+    getCurriculumLevels().then(setLevels)
   }, [profile])
-
-  useEffect(() => {
-    setLevels(
-      curriculumLevels.map((l) => ({
-        id: l.id,
-        name: l.name,
-        description: l.description || '',
-      }))
-    )
-  }, [curriculumLevels])
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault()
     setIsSavingProfile(true)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setIsSavingProfile(false); return }
-
-    const { error } = await supabase
-      .from('teacher_profile')
-      .update({ academy_name: academyName, full_name: fullName })
-      .eq('id', user.id)
-
-    if (error) {
-      showToast('Failed to save: ' + error.message, 'error')
-    } else {
-      await refreshProfile()
-      showToast('Profile saved successfully')
-    }
-    setIsSavingProfile(false)
-  }
-
-  async function handleSaveLevels(e: React.FormEvent) {
-    e.preventDefault()
-    setIsSavingLevels(true)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setIsSavingLevels(false); return }
-
-    try {
-      for (const level of levels) {
-        if (level.isNew && level.name.trim()) {
-          await supabase.from('curriculum_levels').insert({
-            teacher_id: user.id,
-            name: level.name.trim(),
-            description: level.description.trim() || null,
-          })
-        } else if (level.id && level.name.trim()) {
-          await supabase.from('curriculum_levels').update({
-            name: level.name.trim(),
-            description: level.description.trim() || null,
-          }).eq('id', level.id)
-        }
-      }
-      await refreshCurriculumLevels()
-      showToast('Curriculum levels saved')
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to save levels', 'error')
-    }
-    setIsSavingLevels(false)
-  }
-
-  async function handleDeleteLevel(id: string) {
-    if (!confirm('Delete this curriculum level? This will also affect existing classes using it.')) return
-
-    const { error } = await supabase.from('curriculum_levels').delete().eq('id', id)
-    if (error) {
-      showToast('Failed to delete level: ' + error.message, 'error')
-    } else {
-      setLevels((prev) => prev.filter((l) => l.id !== id))
-      await refreshCurriculumLevels()
-      showToast('Curriculum level deleted')
-    }
-  }
-
-  function addLevel() {
-    setLevels((prev) => [...prev, { name: '', description: '', isNew: true }])
-  }
-
-  function updateLevel(idx: number, field: 'name' | 'description', value: string) {
-    setLevels((prev) => {
-      const updated = [...prev]
-      updated[idx][field] = value
-      return updated
+    await updateTeacherProfile({
+      full_name: fullName,
+      academy_name: academyName,
+      subject,
     })
+    await refreshProfile()
+    setIsSavingProfile(false)
+    setToastMsg('Profile details updated successfully!')
+    setTimeout(() => setToastMsg(null), 3000)
   }
 
-  function removeNewLevel(idx: number) {
-    setLevels((prev) => prev.filter((_, i) => i !== idx))
+  function handleAddLevel() {
+    if (!newLevelName.trim()) return
+    const newLvl: CurriculumLevel = {
+      id: 'lvl-' + Date.now(),
+      teacher_id: profile?.id || 'teacher-1',
+      name: newLevelName.trim(),
+      description: newLevelDesc.trim() || null,
+      created_at: new Date().toISOString(),
+    }
+    setLevels([...levels, newLvl])
+    setNewLevelName('')
+    setNewLevelDesc('')
+  }
+
+  async function exportStudentsCSV() {
+    const data = await getStudents()
+    const mapped = data.map((s) => ({
+      RollNumber: s.roll_number || '',
+      FullName: s.full_name,
+      Email: s.email || '',
+      Class: s.class?.name || '',
+    }))
+    downloadCSV(mapped, 'PhysicsDesk_Students_Export')
+  }
+
+  async function exportAssignmentsCSV() {
+    const data = await getAssignments()
+    const mapped = data.map((a) => ({
+      Title: a.title,
+      Topic: a.topic || '',
+      Type: a.assignment_type,
+      TotalMarks: a.total_marks,
+      DueDate: a.due_date || '',
+    }))
+    downloadCSV(mapped, 'PhysicsDesk_Assignments_Export')
   }
 
   return (
     <AppShell>
-      <Header title="Settings" subtitle="Manage your academy configuration" />
+      <Header
+        title="PhysicsDesk Settings"
+        subtitle="Teacher profile, curriculum levels, and LMS data export tools"
+      />
 
-      <div className="page-body flex flex-col gap-6" style={{ maxWidth: '700px' }}>
-        {/* Profile Settings */}
-        <div className="card">
-          <h2
-            className="font-semibold text-sm mb-4 pb-3"
-            style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}
-          >
-            ACADEMY PROFILE
+      <div className="page-body flex flex-col gap-6 max-w-4xl">
+        {toastMsg && (
+          <div className="toast success">
+            <CheckCircle size={18} />
+            <span>{toastMsg}</span>
+          </div>
+        )}
+
+        {/* Profile Section */}
+        <div className="card p-6">
+          <h2 className="text-sm font-bold text-text-primary mb-4 flex items-center gap-2">
+            <Settings size={16} className="text-accent" /> Teacher Profile & Academy Information
           </h2>
-          <form onSubmit={handleSaveProfile} className="flex flex-col gap-4">
+
+          <form onSubmit={handleSaveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="form-label">Full Name</label>
               <input
@@ -146,159 +116,107 @@ export default function SettingsPage() {
                 className="form-input"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Your full name"
-                style={{ maxWidth: '400px' }}
+                required
               />
             </div>
+
             <div className="form-group">
-              <label className="form-label">Academy Name</label>
+              <label className="form-label">Academy / School Name</label>
               <input
                 type="text"
                 className="form-input"
                 value={academyName}
                 onChange={(e) => setAcademyName(e.target.value)}
-                placeholder="Your academy name"
-                style={{ maxWidth: '400px' }}
+                required
               />
             </div>
+
             <div className="form-group">
-              <label className="form-label">Email Address</label>
+              <label className="form-label">Teaching Subject</label>
               <input
-                type="email"
+                type="text"
                 className="form-input"
-                value={profile?.email || ''}
-                disabled
-                style={{ maxWidth: '400px', opacity: 0.6 }}
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                required
               />
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                Email cannot be changed here.
-              </p>
             </div>
-            <div className="flex justify-start">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={isSavingProfile}
-              >
-                {isSavingProfile ? (
-                  <>
-                    <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle size={14} /> Save Profile
-                  </>
-                )}
+
+            <div className="md:col-span-2 flex justify-end mt-2">
+              <button type="submit" className="btn btn-primary" disabled={isSavingProfile}>
+                <Save size={14} /> {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Curriculum Levels */}
-        <div className="card">
-          <h2
-            className="font-semibold text-sm mb-4 pb-3"
-            style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}
-          >
-            CURRICULUM LEVELS
-          </h2>
-          <form onSubmit={handleSaveLevels}>
-            <div className="flex flex-col gap-3 mb-4">
-              {levels.map((level, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
-                  <div className="flex-1 flex gap-2">
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Level name"
-                      value={level.name}
-                      onChange={(e) => updateLevel(idx, 'name', e.target.value)}
-                      style={{ flex: '0 0 150px' }}
-                    />
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Description (optional)"
-                      value={level.description}
-                      onChange={(e) => updateLevel(idx, 'description', e.target.value)}
-                    />
-                  </div>
-                  {level.id ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => handleDeleteLevel(level.id!)}
-                      style={{ color: 'var(--danger)', padding: '0.5rem', flexShrink: 0 }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => removeNewLevel(idx)}
-                      style={{ color: 'var(--danger)', padding: '0.5rem', flexShrink: 0 }}
-                    >
-                      ×
-                    </button>
-                  )}
+        {/* Curriculum Levels Manager */}
+        <div className="card p-6">
+          <h2 className="text-sm font-bold text-text-primary mb-4">Curriculum Levels Manager</h2>
+
+          <div className="flex flex-col gap-3 mb-4">
+            {levels.map((lvl, idx) => (
+              <div key={lvl.id} className="flex items-center justify-between p-3 rounded border border-border bg-bg-subtle text-xs">
+                <div>
+                  <div className="font-bold text-text-primary">{lvl.name}</div>
+                  <div className="text-text-muted">{lvl.description || 'No description provided.'}</div>
                 </div>
-              ))}
+                <button
+                  className="btn btn-ghost btn-sm text-danger"
+                  onClick={() => setLevels(levels.filter((_, i) => i !== idx))}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end pt-3 border-t border-border">
+            <div className="form-group">
+              <label className="form-label">New Level Name</label>
+              <input
+                type="text"
+                className="form-input text-xs"
+                placeholder="e.g. AP Physics C"
+                value={newLevelName}
+                onChange={(e) => setNewLevelName(e.target.value)}
+              />
             </div>
 
-            <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={addLevel}>
-                <Plus size={14} /> Add Level
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary btn-sm"
-                disabled={isSavingLevels}
-              >
-                {isSavingLevels ? (
-                  <>
-                    <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Levels'
-                )}
-              </button>
+            <div className="form-group">
+              <label className="form-label">Syllabus Description</label>
+              <input
+                type="text"
+                className="form-input text-xs"
+                placeholder="Description..."
+                value={newLevelDesc}
+                onChange={(e) => setNewLevelDesc(e.target.value)}
+              />
             </div>
-          </form>
+
+            <button type="button" className="btn btn-secondary text-xs py-2" onClick={handleAddLevel}>
+              <Plus size={14} /> Add Curriculum Level
+            </button>
+          </div>
         </div>
 
-        {/* About */}
-        <div className="card">
-          <h2
-            className="font-semibold text-sm mb-3 pb-3"
-            style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}
-          >
-            ABOUT EDUDESK
-          </h2>
-          <div className="flex flex-col gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            <div className="flex justify-between">
-              <span>Version</span>
-              <span className="font-mono">1.0.0</span>
-            </div>
-            <div className="flex justify-between">
-              <span>AI Provider</span>
-              <span>Anthropic Claude</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Database</span>
-              <span>Supabase (PostgreSQL)</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Curricula</span>
-              <span>IGCSE, A-Level, Edexcel Physics</span>
-            </div>
+        {/* Data Export Tools */}
+        <div className="card p-6">
+          <h2 className="text-sm font-bold text-text-primary mb-2">Data Export Tools for External LMS</h2>
+          <p className="text-xs text-text-secondary mb-4">
+            Download CSV files of student rosters and grades to import back into your academy’s LMS.
+          </p>
+
+          <div className="flex flex-wrap gap-3">
+            <button className="btn btn-secondary btn-sm" onClick={exportStudentsCSV}>
+              <Download size={14} /> Export All Students (CSV)
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={exportAssignmentsCSV}>
+              <Download size={14} /> Export All Assignments (CSV)
+            </button>
           </div>
         </div>
       </div>
-
-      {toast && <div className={`toast ${toast.type}`}>{toast.type === 'success' ? '✓' : '✕'} {toast.msg}</div>}
     </AppShell>
   )
 }

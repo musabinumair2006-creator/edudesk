@@ -1,413 +1,213 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import AppShell from '@/components/layout/AppShell'
 import Header from '@/components/layout/Header'
-import { getClasses } from '@/lib/supabase/queries/classes'
-import { getStudents } from '@/lib/supabase/queries/students'
+import ReportViewer from '@/components/reports/ReportViewer'
 import { getReports } from '@/lib/supabase/queries/reports'
-import type { Class, Student, Report } from '@/lib/types'
-import { formatDate, formatTimeAgo } from '@/lib/utils'
-import { BarChart2, Wand2, ChevronDown, FileText } from 'lucide-react'
+import { getStudents } from '@/lib/supabase/queries/students'
+import { getClasses } from '@/lib/supabase/queries/classes'
+import type { Report, Student, Class } from '@/lib/types'
+import { BarChart2, Sparkles, Download, CheckCircle } from 'lucide-react'
 
 export default function ReportsPage() {
-  const [classes, setClasses] = useState<Class[]>([])
-  const [students, setStudents] = useState<Student[]>([])
   const [reports, setReports] = useState<Report[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [classes, setClasses] = useState<Class[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  const [activeTab, setActiveTab] = useState<'student' | 'class'>('student')
+  const [selectedStudentId, setSelectedStudentId] = useState('')
+  const [selectedClassId, setSelectedClassId] = useState('')
+  const [period, setPeriod] = useState('monthly')
+
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState<string | null>(null)
-  const [expandedReport, setExpandedReport] = useState<string | null>(null)
-
-  // Report generation form
-  const [reportType, setReportType] = useState<'weekly' | 'monthly' | 'term'>('monthly')
-  const [targetType, setTargetType] = useState<'student' | 'class'>('student')
-  const [studentId, setStudentId] = useState('')
-  const [classId, setClassId] = useState('')
-  const [periodStart, setPeriodStart] = useState('')
-  const [periodEnd, setPeriodEnd] = useState('')
-
-  const [toast, setToast] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [viewingReport, setViewingReport] = useState<Report | null>(null)
 
   useEffect(() => {
+    async function loadData() {
+      setIsLoading(true)
+      const [rData, sData, cData] = await Promise.all([
+        getReports(),
+        getStudents(),
+        getClasses(),
+      ])
+      setReports(rData)
+      setStudents(sData)
+      setClasses(cData)
+      if (sData.length > 0) setSelectedStudentId(sData[0].id)
+      if (cData.length > 0) setSelectedClassId(cData[0].id)
+      setIsLoading(false)
+    }
     loadData()
-    // Set default period (last 30 days)
-    const end = new Date()
-    const start = new Date()
-    start.setDate(end.getDate() - 30)
-    setPeriodEnd(end.toISOString().split('T')[0])
-    setPeriodStart(start.toISOString().split('T')[0])
   }, [])
 
-  async function loadData() {
-    setIsLoading(true)
-    const [classData, studentData, reportData] = await Promise.all([
-      getClasses(),
-      getStudents(),
-      getReports(),
-    ])
-    setClasses(classData)
-    setStudents(studentData)
-    setReports((reportData || []) as Report[])
-    if (classData.length > 0) setClassId(classData[0].id)
-    if (studentData.length > 0) setStudentId(studentData[0].id)
-    setIsLoading(false)
-  }
-
-  async function handleGenerate() {
+  async function handleGenerateReport(e: React.FormEvent) {
+    e.preventDefault()
     setIsGenerating(true)
-    setGenerateError(null)
+    setSuccessMsg(null)
 
     try {
-      const payload = {
-        report_type: reportType,
-        student_id: targetType === 'student' ? studentId : undefined,
-        class_id: targetType === 'class' ? classId : undefined,
-        period_start: periodStart,
-        period_end: periodEnd,
-      }
-
       const res = await fetch('/api/ai/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          report_type: activeTab,
+          student_id: activeTab === 'student' ? selectedStudentId : null,
+          class_id: activeTab === 'class' ? selectedClassId : null,
+          period_type: period,
+        }),
       })
 
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Report generation failed')
+      const data = await res.json()
+      if (data.success) {
+        setSuccessMsg('Academic report generated and sent to Pending Suggestions queue for teacher review!')
       }
-
-      setToast('Report generated successfully!')
-      setTimeout(() => setToast(null), 3000)
-      await loadData()
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : 'Failed to generate report')
+    } catch {
+      setSuccessMsg('Error calling report generator.')
     } finally {
       setIsGenerating(false)
-    }
-  }
-
-  const PERIOD_PRESETS = [
-    { label: 'Last 7 days', days: 7 },
-    { label: 'Last 30 days', days: 30 },
-    { label: 'Last 3 months', days: 90 },
-  ]
-
-  function applyPreset(days: number) {
-    const end = new Date()
-    const start = new Date()
-    start.setDate(end.getDate() - days)
-    setPeriodEnd(end.toISOString().split('T')[0])
-    setPeriodStart(start.toISOString().split('T')[0])
-  }
-
-  function getRatingColor(rating: string) {
-    switch (rating?.toLowerCase()) {
-      case 'excellent': return 'var(--success)'
-      case 'good': return '#16A34A'
-      case 'satisfactory': return 'var(--warning)'
-      case 'needs improvement': return 'var(--danger)'
-      default: return 'var(--text-secondary)'
     }
   }
 
   return (
     <AppShell>
       <Header
-        title="Reports"
-        subtitle="AI-generated performance reports"
+        title="Physics Performance Reports"
+        subtitle="AI-written academic performance reports for students and Centaurus Academy classes"
       />
 
       <div className="page-body flex flex-col gap-6">
-        {/* Generation Panel */}
-        <div
-          className="card"
-          style={{ border: '1px solid rgba(37,99,235,0.3)', background: 'var(--accent-light)' }}
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <Wand2 size={16} style={{ color: 'var(--accent)' }} />
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--accent)' }}>
-              Generate AI Report
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Report Type */}
-            <div className="form-group">
-              <label className="form-label">Report Period</label>
-              <div className="flex gap-1.5">
-                {(['weekly', 'monthly', 'term'] as const).map((t) => (
-                  <button
-                    key={t}
-                    className="btn btn-sm flex-1"
-                    style={{
-                      justifyContent: 'center',
-                      background: reportType === t ? 'var(--accent)' : 'white',
-                      color: reportType === t ? 'white' : 'var(--text-secondary)',
-                      border: reportType === t ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
-                      fontSize: '12px',
-                    }}
-                    onClick={() => setReportType(t)}
-                  >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Target */}
-            <div className="form-group">
-              <label className="form-label">Report For</label>
-              <div className="flex gap-1.5 mb-2">
-                {(['student', 'class'] as const).map((t) => (
-                  <button
-                    key={t}
-                    className="btn btn-sm flex-1"
-                    style={{
-                      justifyContent: 'center',
-                      background: targetType === t ? 'var(--accent)' : 'white',
-                      color: targetType === t ? 'white' : 'var(--text-secondary)',
-                      border: targetType === t ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
-                      fontSize: '12px',
-                    }}
-                    onClick={() => setTargetType(t)}
-                  >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
-              </div>
-              {targetType === 'student' ? (
-                <select
-                  className="form-input form-select"
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                >
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.full_name}</option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  className="form-input form-select"
-                  value={classId}
-                  onChange={(e) => setClassId(e.target.value)}
-                >
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Date Range */}
-            <div className="form-group">
-              <label className="form-label">Date Range</label>
-              <div className="flex gap-1.5 mb-2">
-                {PERIOD_PRESETS.map((p) => (
-                  <button
-                    key={p.days}
-                    className="btn btn-sm"
-                    style={{ fontSize: '11px', background: 'white', border: '1px solid var(--border-strong)' }}
-                    onClick={() => applyPreset(p.days)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1.5">
-                <input type="date" className="form-input" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-                <span className="self-center text-muted text-sm">to</span>
-                <input type="date" className="form-input" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-              </div>
-            </div>
-
-            {/* Generate Button */}
-            <div className="form-group flex flex-col justify-end">
-              <button
-                className="btn btn-primary btn-lg w-full"
-                style={{ justifyContent: 'center', marginTop: 'auto' }}
-                onClick={handleGenerate}
-                disabled={isGenerating || !periodStart || !periodEnd}
-              >
-                {isGenerating ? (
-                  <>
-                    <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={15} /> Generate Report
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {generateError && (
-            <div
-              className="mt-3 p-3 rounded-md text-sm"
-              style={{ background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }}
+        {/* Report Generator Card */}
+        <div className="card p-6">
+          <div className="tabs mb-4">
+            <button
+              className={`tab ${activeTab === 'student' ? 'active' : ''}`}
+              onClick={() => setActiveTab('student')}
             >
-              {generateError}
+              Student Performance Report
+            </button>
+            <button
+              className={`tab ${activeTab === 'class' ? 'active' : ''}`}
+              onClick={() => setActiveTab('class')}
+            >
+              Class-Wide Performance Report
+            </button>
+          </div>
+
+          {successMsg && (
+            <div className="p-3.5 mb-4 rounded bg-success-light text-success border border-success text-xs font-medium flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={16} />
+                <span>{successMsg}</span>
+              </div>
+              <Link href="/suggestions" className="underline font-bold">
+                Review in Suggestions Queue
+              </Link>
             </div>
           )}
+
+          <form onSubmit={handleGenerateReport} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            {activeTab === 'student' ? (
+              <div className="form-group">
+                <label className="form-label">Select Student</label>
+                <select
+                  className="form-input form-select"
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                >
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name} ({s.roll_number || 'PHY-N/A'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label className="form-label">Select Class</label>
+                <select
+                  className="form-input form-select"
+                  value={selectedClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                >
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Report Period</label>
+              <select
+                className="form-input form-select capitalize"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+              >
+                <option value="weekly">Last Week</option>
+                <option value="monthly">Last Month</option>
+                <option value="midterm">Mid-Term Assessment</option>
+                <option value="final">End of Term</option>
+              </select>
+            </div>
+
+            <button type="submit" className="btn btn-primary justify-center py-2.5" disabled={isGenerating}>
+              {isGenerating ? (
+                <>
+                  <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} /> Generate Formal Report
+                </>
+              )}
+            </button>
+          </form>
         </div>
 
-        {/* Reports List */}
+        {/* Report List */}
         <div className="card">
           <div className="card-header">
-            <div className="flex items-center gap-2">
-              <BarChart2 size={15} style={{ color: 'var(--accent)' }} />
-              <h2 className="font-semibold text-sm">Generated Reports</h2>
-            </div>
+            <h2 className="font-semibold text-sm">Approved Reports Log</h2>
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center py-10">
-              <div className="spinner spinner-lg" />
+            <div className="flex justify-center py-16">
+              <span className="spinner spinner-lg" />
             </div>
           ) : reports.length === 0 ? (
-            <div className="empty-state py-10">
-              <FileText size={36} />
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                No reports generated yet. Generate your first report above.
-              </p>
-            </div>
+            <div className="empty-state py-12 text-xs">No approved reports generated yet.</div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {reports.map((report) => {
-                const isExpanded = expandedReport === report.id
-                const rating = report.content?.performance_rating
-
-                return (
-                  <div
-                    key={report.id}
-                    className="rounded-md"
-                    style={{ border: '1px solid var(--border)', overflow: 'hidden' }}
-                  >
-                    {/* Report Header */}
-                    <div
-                      className="flex items-center gap-3 p-3 cursor-pointer"
-                      style={{ background: 'var(--bg-subtle)' }}
-                      onClick={() => setExpandedReport(isExpanded ? null : report.id)}
-                    >
-                      <FileText size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">
-                            {report.student?.full_name || report.class?.name || 'Report'}
-                          </span>
-                          <span
-                            className="badge"
-                            style={{ background: 'var(--accent-light)', color: 'var(--accent)', fontSize: '11px' }}
-                          >
-                            {report.report_type}
-                          </span>
-                          {rating && (
-                            <span
-                              className="badge"
-                              style={{
-                                background: getRatingColor(rating) + '20',
-                                color: getRatingColor(rating),
-                                fontSize: '11px',
-                              }}
-                            >
-                              {rating}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {report.period_start ? formatDate(report.period_start) : '—'} → {report.period_end ? formatDate(report.period_end) : '—'} · Generated {formatTimeAgo(report.generated_at)}
-                        </div>
+            <div className="flex flex-col gap-4 p-4">
+              {reports.map((rep) => (
+                <div key={rep.id} className="p-4 rounded-lg border border-border bg-bg-surface flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm text-text-primary capitalize">
+                        {rep.report_type} Report — {rep.student?.full_name || rep.class?.name || 'Centaurus Academy'}
                       </div>
-                      <ChevronDown
-                        size={16}
-                        style={{
-                          color: 'var(--text-muted)',
-                          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
-                          transition: 'transform 0.2s',
-                          flexShrink: 0,
-                        }}
-                      />
+                      <div className="text-xs text-text-muted mt-0.5">
+                        Generated: {new Date(rep.generated_at).toLocaleDateString()}
+                      </div>
                     </div>
-
-                    {/* Expanded Report Content */}
-                    {isExpanded && report.content && (
-                      <div className="p-4" style={{ borderTop: '1px solid var(--border)' }}>
-                        {report.content.summary && (
-                          <div className="mb-4">
-                            <div className="label-sm mb-2">Summary</div>
-                            <p className="text-sm" style={{ lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                              {report.content.summary}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {report.content.highlights?.length > 0 && (
-                            <div>
-                              <div className="label-sm mb-2" style={{ color: 'var(--success)' }}>Highlights</div>
-                              <ul className="flex flex-col gap-1">
-                                {report.content.highlights.map((h, i) => (
-                                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                    <span style={{ color: 'var(--success)', flexShrink: 0 }}>✓</span> {h}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {report.content.concerns?.length > 0 && (
-                            <div>
-                              <div className="label-sm mb-2" style={{ color: 'var(--danger)' }}>Concerns</div>
-                              <ul className="flex flex-col gap-1">
-                                {report.content.concerns.map((c, i) => (
-                                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                    <span style={{ color: 'var(--danger)', flexShrink: 0 }}>!</span> {c}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {report.content.recommendations?.length > 0 && (
-                            <div>
-                              <div className="label-sm mb-2" style={{ color: 'var(--accent)' }}>Recommendations</div>
-                              <ul className="flex flex-col gap-1">
-                                {report.content.recommendations.map((r, i) => (
-                                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                    <span style={{ color: 'var(--accent)', flexShrink: 0 }}>→</span> {r}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          {report.content.next_steps?.length > 0 && (
-                            <div>
-                              <div className="label-sm mb-2" style={{ color: 'var(--warning)' }}>Next Steps</div>
-                              <ul className="flex flex-col gap-1">
-                                {report.content.next_steps.map((n, i) => (
-                                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                    <span style={{ color: 'var(--warning)', flexShrink: 0 }}>◈</span> {n}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    <span className="badge bg-accent-light text-accent font-semibold">
+                      Rating: {rep.content.overall_rating}
+                    </span>
                   </div>
-                )
-              })}
+
+                  <ReportViewer report={rep} />
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
-
-      {toast && <div className="toast success">✓ {toast}</div>}
     </AppShell>
   )
 }

@@ -5,9 +5,9 @@ import { AppProvider } from '@/context/AppContext'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'EduDesk — Physics Academy Management',
-  description: 'AI-powered LMS assistant for Physics teachers — IGCSE, A-Level, and Edexcel curricula management.',
-  keywords: 'physics, LMS, IGCSE, A-Level, Edexcel, education, academy management',
+  title: 'PhysicsDesk — Centaurus Academy Assistant',
+  description: 'AI-powered assistant for Physics teachers at Centaurus Academy — file parsing, grade analytics, AI suggestions, and report generation.',
+  keywords: 'physics, physicsdesk, centaurus academy, LMS assistant, IGCSE, A-Level, Edexcel',
 }
 
 export default function RootLayout({

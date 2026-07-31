@@ -3,146 +3,122 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Zap, AlertCircle } from 'lucide-react'
+import { Zap, Lock, Mail, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
+    setErrorMsg(null)
     setIsLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      })
 
-    if (error) {
-      setError(error.message)
-      setIsLoading(false)
-      return
-    }
-
-    if (data.user) {
-      // Check if academy has been set up
-      const { data: profile } = await supabase
-        .from('teacher_profile')
-        .select('academy_name')
-        .eq('id', data.user.id)
-        .single()
-
-      if (!profile?.academy_name) {
-        router.push('/auth/setup')
-      } else {
-        router.push('/dashboard')
+      if (error) {
+        setErrorMsg(error.message)
+        setIsLoading(false)
+        return
       }
+
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from('teachers')
+          .select('academy_name')
+          .eq('id', data.user.id)
+          .single()
+
+        if (!profile?.academy_name) {
+          router.replace('/auth/setup')
+        } else {
+          router.replace('/dashboard')
+        }
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected authentication error occurred.')
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{ background: 'var(--bg-base)' }}
-    >
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center gap-2 mb-3"
-            style={{ color: 'var(--accent)' }}
-          >
-            <Zap size={28} fill="currentColor" />
-            <span className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              EduDesk
-            </span>
+    <div className="flex items-center justify-center min-h-screen bg-bg-base p-4">
+      <div className="card w-full max-w-md p-8 shadow-xl bg-white border border-border">
+        {/* Header Branding */}
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="p-3 bg-accent-light text-accent rounded-xl mb-3">
+            <Zap size={28} />
           </div>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Physics Academy Management System
-          </p>
+          <h1 className="text-2xl font-extrabold text-text-primary">PhysicsDesk</h1>
+          <p className="text-xs text-text-muted mt-1">Centaurus Academy Teacher Assistant</p>
         </div>
 
-        {/* Card */}
-        <div className="card" style={{ padding: '2rem' }}>
-          <h1 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-            Sign in to your account
-          </h1>
-          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-            Enter your credentials to access EduDesk
-          </p>
+        {errorMsg && (
+          <div className="p-3 rounded-md bg-danger-light text-danger text-xs mb-4 flex items-center gap-2 border border-danger">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
 
-          {error && (
-            <div
-              className="flex items-start gap-2 p-3 rounded-md mb-4 text-sm"
-              style={{
-                background: 'var(--danger-light)',
-                border: '1px solid var(--danger)',
-                color: 'var(--danger)',
-              }}
-            >
-              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <div className="form-group">
-              <label htmlFor="email" className="form-label">
-                Email address
-              </label>
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <div className="form-group">
+            <label className="form-label">Email Address</label>
+            <div className="relative">
+              <Mail size={16} className="absolute left-3 top-3 text-text-muted" />
               <input
-                id="email"
                 type="email"
-                className="form-input"
-                placeholder="teacher@academy.com"
+                className="form-input pl-9"
+                placeholder="teacher@centaurus.edu"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                autoComplete="email"
               />
             </div>
+          </div>
 
-            <div className="form-group">
-              <label htmlFor="password" className="form-label">
-                Password
-              </label>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <div className="relative">
+              <Lock size={16} className="absolute left-3 top-3 text-text-muted" />
               <input
-                id="password"
                 type="password"
-                className="form-input"
+                className="form-input pl-9"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoComplete="current-password"
               />
             </div>
+          </div>
 
-            <button
-              type="submit"
-              className="btn btn-primary btn-lg w-full"
-              style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                  Signing in...
-                </>
-              ) : (
-                'Sign in'
-              )}
-            </button>
-          </form>
+          <button
+            type="submit"
+            className="btn btn-primary w-full py-2.5 justify-center mt-2"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
+                Signing in...
+              </>
+            ) : (
+              'Sign In to PhysicsDesk'
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-xs text-text-muted border-t border-border pt-4">
+          PhysicsDesk is reserved for authorized Centaurus Academy faculty.
         </div>
-
-        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-muted)' }}>
-          EduDesk is a private single-teacher application.
-          <br />Contact your administrator for access.
-        </p>
       </div>
     </div>
   )

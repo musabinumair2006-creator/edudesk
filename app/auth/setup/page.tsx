@@ -3,296 +3,239 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { useApp } from '@/context/AppContext'
-import { Zap, CheckCircle, Plus, Trash2, ChevronRight } from 'lucide-react'
-
-interface LevelDraft {
-  name: string
-  description: string
-}
-
-const DEFAULT_LEVELS: LevelDraft[] = [
-  { name: 'IGCSE', description: 'Cambridge International General Certificate of Secondary Education' },
-  { name: 'A-Level', description: 'Cambridge International A Level' },
-  { name: 'Edexcel', description: 'Pearson Edexcel International Advanced Level' },
-]
+import { Zap, CheckCircle, Plus, BookOpen, Layers } from 'lucide-react'
 
 export default function SetupPage() {
   const router = useRouter()
   const supabase = createClient()
-  const { refreshProfile, refreshCurriculumLevels } = useApp()
 
-  const [step, setStep] = useState(1)
-  const [academyName, setAcademyName] = useState('')
-  const [levels, setLevels] = useState<LevelDraft[]>(DEFAULT_LEVELS)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [fullName, setFullName] = useState('Dr. Sarah Jenkins')
+  const [academyName, setAcademyName] = useState('Centaurus Academy')
+  const [subject, setSubject] = useState('Physics')
 
-  function addLevel() {
-    setLevels([...levels, { name: '', description: '' }])
-  }
+  // Step 2 Curriculum levels
+  const [levels, setLevels] = useState([
+    { name: 'IGCSE Physics', description: 'CIE 0625 Core & Extended Syllabus' },
+    { name: 'A-Level Physics', description: 'CIE 9702 Advanced Syllabus' },
+    { name: 'Edexcel Physics', description: 'Edexcel International A-Level' },
+  ])
 
-  function removeLevel(idx: number) {
-    setLevels(levels.filter((_, i) => i !== idx))
-  }
+  // Step 3 Class
+  const [className, setClassName] = useState('Grade 12 Physics (A-Level)')
+  const [academicYear, setAcademicYear] = useState('2025-2026')
+  const [isSaving, setIsSaving] = useState(false)
 
-  function updateLevel(idx: number, field: keyof LevelDraft, value: string) {
-    const updated = [...levels]
-    updated[idx][field] = value
-    setLevels(updated)
-  }
-
-  async function handleComplete() {
-    setIsLoading(true)
-    setError(null)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/auth/login')
-      return
-    }
-
-    // Update teacher profile with academy name
-    const { error: profileError } = await supabase
-      .from('teacher_profile')
-      .update({ academy_name: academyName.trim() })
-      .eq('id', user.id)
-
-    if (profileError) {
-      setError('Failed to save academy name: ' + profileError.message)
-      setIsLoading(false)
-      return
-    }
-
-    // Insert curriculum levels
-    const validLevels = levels.filter((l) => l.name.trim())
-    if (validLevels.length > 0) {
-      const { error: levelError } = await supabase.from('curriculum_levels').insert(
-        validLevels.map((l) => ({
-          teacher_id: user.id,
-          name: l.name.trim(),
-          description: l.description.trim() || null,
-        }))
-      )
-      if (levelError) {
-        setError('Failed to save curriculum levels: ' + levelError.message)
-        setIsLoading(false)
+  async function handleCompleteSetup() {
+    setIsSaving(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.replace('/upload')
         return
       }
-    }
 
-    await Promise.all([refreshProfile(), refreshCurriculumLevels()])
-    router.push('/dashboard')
+      // Update teacher profile
+      await supabase.from('teachers').upsert({
+        id: user.id,
+        full_name: fullName,
+        email: user.email!,
+        academy_name: academyName,
+        subject,
+      })
+
+      // Insert curriculum levels
+      for (const lvl of levels) {
+        if (lvl.name.trim()) {
+          await supabase.from('curriculum_levels').insert({
+            teacher_id: user.id,
+            name: lvl.name.trim(),
+            description: lvl.description.trim() || null,
+          })
+        }
+      }
+
+      // Insert initial class
+      await supabase.from('classes').insert({
+        teacher_id: user.id,
+        name: className.trim() || 'Grade 12 Physics',
+        academic_year: academicYear,
+      })
+
+      router.replace('/upload')
+    } catch {
+      router.replace('/upload')
+    }
   }
 
-  const steps = [
-    { n: 1, label: 'Academy Name' },
-    { n: 2, label: 'Curriculum Levels' },
-    { n: 3, label: 'Confirm' },
-  ]
-
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: 'var(--bg-base)' }}
-    >
-      <div className="w-full max-w-lg">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2" style={{ color: 'var(--accent)' }}>
-            <Zap size={24} fill="currentColor" />
-            <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              EduDesk
-            </span>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-bg-base p-4">
+      <div className="card w-full max-w-xl p-8 bg-white border border-border shadow-xl">
+        {/* Progress Bar */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between text-xs font-semibold text-text-muted mb-2">
+            <span>STEP {step} OF 3</span>
+            <span>{step === 1 ? 'Profile' : step === 2 ? 'Curriculum Levels' : 'First Class'}</span>
           </div>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Let&apos;s set up your academy
-          </p>
+          <div className="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent transition-all duration-300"
+              style={{ width: `${(step / 3) * 100}%` }}
+            />
+          </div>
         </div>
 
-        {/* Step Indicator */}
-        <div className="flex items-center gap-2 mb-6 justify-center">
-          {steps.map((s, i) => (
-            <div key={s.n} className="flex items-center gap-2">
-              <div
-                className="flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold transition-all"
-                style={{
-                  background: step > s.n ? 'var(--success)' : step === s.n ? 'var(--accent)' : 'var(--bg-subtle)',
-                  color: step >= s.n ? 'white' : 'var(--text-muted)',
-                  fontSize: '0.75rem',
-                }}
-              >
-                {step > s.n ? <CheckCircle size={14} /> : s.n}
-              </div>
-              <span
-                className="text-sm hidden sm:block"
-                style={{ color: step === s.n ? 'var(--text-primary)' : 'var(--text-muted)', fontWeight: step === s.n ? 600 : 400 }}
-              >
-                {s.label}
-              </span>
-              {i < steps.length - 1 && (
-                <div className="w-8 h-px" style={{ background: 'var(--border-strong)' }} />
-              )}
+        {/* Step 1 */}
+        {step === 1 && (
+          <div className="flex flex-col gap-4 animate-fade-in">
+            <h2 className="text-xl font-bold text-text-primary">Welcome to PhysicsDesk</h2>
+            <p className="text-xs text-text-secondary">
+              Confirm your teaching profile details for Centaurus Academy.
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
             </div>
-          ))}
-        </div>
 
-        <div className="card" style={{ padding: '2rem' }}>
-          {/* Step 1: Academy Name */}
-          {step === 1 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-1">What is your academy&apos;s name?</h2>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                This will appear on reports, papers, and documents.
-              </p>
-              <div className="form-group">
-                <label className="form-label">Academy Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Bright Minds Physics Academy"
-                  value={academyName}
-                  onChange={(e) => setAcademyName(e.target.value)}
-                  autoFocus
-                />
-              </div>
+            <div className="form-group">
+              <label className="form-label">Academy Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={academyName}
+                onChange={(e) => setAcademyName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Primary Subject</label>
+              <input
+                type="text"
+                className="form-input"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                required
+              />
+            </div>
+
+            <button
+              className="btn btn-primary justify-center py-2.5 mt-2"
+              onClick={() => setStep(2)}
+            >
+              Next: Configure Curricula →
+            </button>
+          </div>
+        )}
+
+        {/* Step 2 */}
+        {step === 2 && (
+          <div className="flex flex-col gap-4 animate-fade-in">
+            <h2 className="text-xl font-bold text-text-primary">Physics Curricula</h2>
+            <p className="text-xs text-text-secondary">
+              Pre-loaded syllabi for your academy classes. Add or modify as needed.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              {levels.map((lvl, idx) => (
+                <div key={idx} className="flex gap-2">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={lvl.name}
+                    onChange={(e) => {
+                      const updated = [...levels]
+                      updated[idx].name = e.target.value
+                      setLevels(updated)
+                    }}
+                    placeholder="Curriculum Level"
+                  />
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={lvl.description}
+                    onChange={(e) => {
+                      const updated = [...levels]
+                      updated[idx].description = e.target.value
+                      setLevels(updated)
+                    }}
+                    placeholder="Syllabus Description"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm w-fit"
+              onClick={() => setLevels([...levels, { name: '', description: '' }])}
+            >
+              <Plus size={14} /> Add Curriculum Level
+            </button>
+
+            <div className="flex justify-between mt-4">
+              <button className="btn btn-ghost" onClick={() => setStep(1)}>
+                Back
+              </button>
+              <button className="btn btn-primary" onClick={() => setStep(3)}>
+                Next: Create First Class →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 */}
+        {step === 3 && (
+          <div className="flex flex-col gap-4 animate-fade-in">
+            <h2 className="text-xl font-bold text-text-primary">Add Your First Class</h2>
+            <p className="text-xs text-text-secondary">
+              Create a class section to start importing LMS data and tracking performance.
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">Class Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                placeholder="e.g. Grade 12 Physics (A-Level)"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Academic Year</label>
+              <input
+                type="text"
+                className="form-input"
+                value={academicYear}
+                onChange={(e) => setAcademicYear(e.target.value)}
+                placeholder="2025-2026"
+              />
+            </div>
+
+            <div className="flex justify-between mt-4">
+              <button className="btn btn-ghost" onClick={() => setStep(2)}>
+                Back
+              </button>
               <button
-                className="btn btn-primary w-full mt-6"
-                style={{ justifyContent: 'center' }}
-                disabled={!academyName.trim()}
-                onClick={() => setStep(2)}
+                className="btn btn-primary justify-center py-2.5 px-6"
+                onClick={handleCompleteSetup}
+                disabled={isSaving}
               >
-                Next <ChevronRight size={16} />
+                {isSaving ? 'Finishing Setup...' : 'Finish Setup & Open Upload Hub 🚀'}
               </button>
             </div>
-          )}
-
-          {/* Step 2: Curriculum Levels */}
-          {step === 2 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-1">Curriculum Levels</h2>
-              <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
-                These are the programmes you teach. You can add more anytime in Settings.
-              </p>
-              <div className="flex flex-col gap-3 mb-4">
-                {levels.map((level, idx) => (
-                  <div key={idx} className="flex gap-2 items-start">
-                    <div className="flex-1 flex gap-2">
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Level name (e.g. IGCSE)"
-                        value={level.name}
-                        onChange={(e) => updateLevel(idx, 'name', e.target.value)}
-                        style={{ flex: '0 0 140px' }}
-                      />
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Description (optional)"
-                        value={level.description}
-                        onChange={(e) => updateLevel(idx, 'description', e.target.value)}
-                      />
-                    </div>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => removeLevel(idx)}
-                      type="button"
-                      style={{ color: 'var(--danger)', padding: '0.5rem', flexShrink: 0 }}
-                      title="Remove level"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={addLevel} type="button">
-                <Plus size={14} /> Add Level
-              </button>
-              <div className="flex gap-3 mt-6">
-                <button className="btn btn-secondary" onClick={() => setStep(1)}>
-                  Back
-                </button>
-                <button
-                  className="btn btn-primary flex-1"
-                  style={{ justifyContent: 'center' }}
-                  disabled={levels.filter((l) => l.name.trim()).length === 0}
-                  onClick={() => setStep(3)}
-                >
-                  Next <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Confirm */}
-          {step === 3 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-1">All set! Ready to begin.</h2>
-              <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
-                Review your setup before we create your EduDesk account.
-              </p>
-
-              <div
-                className="rounded-md p-3 mb-3"
-                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}
-              >
-                <div className="label-sm mb-1">Academy</div>
-                <div className="font-semibold">{academyName}</div>
-              </div>
-
-              <div
-                className="rounded-md p-3 mb-5"
-                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}
-              >
-                <div className="label-sm mb-2">Curriculum Levels ({levels.filter(l => l.name.trim()).length})</div>
-                <div className="flex flex-col gap-1">
-                  {levels.filter((l) => l.name.trim()).map((l, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <CheckCircle size={13} style={{ color: 'var(--success)', flexShrink: 0 }} />
-                      <span className="font-medium text-sm">{l.name}</span>
-                      {l.description && (
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          — {l.description}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {error && (
-                <div
-                  className="p-3 rounded-md mb-4 text-sm"
-                  style={{ background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }}
-                >
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button className="btn btn-secondary" onClick={() => setStep(2)}>
-                  Back
-                </button>
-                <button
-                  className="btn btn-primary flex-1"
-                  style={{ justifyContent: 'center' }}
-                  onClick={handleComplete}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                      Setting up...
-                    </>
-                  ) : (
-                    '⚡ Start using EduDesk'
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
