@@ -3,13 +3,10 @@
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "20.x"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
 
 # Environment variable documentation for Netlify Dashboard:
 # - GEMINI_API_KEY: Your Google Gemini API Key
-# - ANTHROPIC_API_KEY: Your Anthropic Claude API Key (optional fallback)
 # - NEXT_PUBLIC_SUPABASE_URL: Supabase Project URL
 # - NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase Anon API Key
