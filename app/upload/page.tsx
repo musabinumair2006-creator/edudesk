@@ -42,6 +42,19 @@ export default function UploadPage() {
     setIsLoading(false)
   }
 
+  async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => {
+        const result = reader.result as string
+        const base64 = result.split(',')[1] || ''
+        resolve(base64)
+      }
+      reader.onerror = (error) => reject(error)
+    })
+  }
+
   async function handleFileSelected(file: File) {
     setCurrentFileName(file.name)
     setErrorMessage(null)
@@ -50,22 +63,28 @@ export default function UploadPage() {
 
     // Stage 1: Uploading
     setStage('uploading')
-    await new Promise((r) => setTimeout(r, 600))
+    await new Promise((r) => setTimeout(r, 300))
 
     // Stage 2: Reading
     setStage('reading')
-    await new Promise((r) => setTimeout(r, 800))
+    await new Promise((r) => setTimeout(r, 300))
 
     // Stage 3: Understanding
     setStage('understanding')
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const base64Data = await fileToBase64(file)
 
       const res = await fetch('/api/upload/parse', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || 'application/octet-stream',
+          base64: base64Data,
+        }),
       })
 
       let data: any = {}
@@ -73,7 +92,7 @@ export default function UploadPage() {
       try {
         data = JSON.parse(rawText)
       } catch {
-        data = { error: 'Server error processing file. Please verify the file is a valid Excel sheet, CSV, PDF, or Image.' }
+        data = { error: 'Server error processing file. Please verify the file format.' }
       }
 
       if (!res.ok || data.error) {

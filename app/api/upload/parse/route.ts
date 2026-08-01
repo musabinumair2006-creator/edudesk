@@ -9,17 +9,31 @@ import type { ParsedDataResult } from '@/lib/types'
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
+    let fileName = ''
+    let mimeType = 'application/octet-stream'
+    let buffer: Buffer
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided in form request.' }, { status: 400 })
+    const contentType = req.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const body = await req.json()
+      fileName = body.fileName || 'file.csv'
+      mimeType = body.fileType || 'application/octet-stream'
+      buffer = Buffer.from(body.base64 || '', 'base64')
+    } else {
+      const formData = await req.formData()
+      const file = formData.get('file') as File | null
+      if (!file) {
+        return NextResponse.json({ error: 'No file provided in form request.' }, { status: 400 })
+      }
+      fileName = file.name
+      mimeType = file.type || 'application/octet-stream'
+      const arrayBuffer = await file.arrayBuffer()
+      buffer = Buffer.from(arrayBuffer)
     }
 
-    const fileName = file.name
-    const mimeType = file.type || 'application/octet-stream'
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    if (!buffer || buffer.length === 0) {
+      return NextResponse.json({ error: 'Uploaded file is empty.' }, { status: 400 })
+    }
 
     let extractedRawText = ''
 
