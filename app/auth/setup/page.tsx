@@ -2,97 +2,134 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Zap, CheckCircle, Plus, BookOpen, Layers } from 'lucide-react'
+import { useApp } from '@/context/AppContext'
+import { supabase } from '@/lib/supabase'
+import { Zap, Check, Plus, Trash2, ArrowRight } from 'lucide-react'
 
 export default function SetupPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const { user, profile, refreshProfile, refreshCurriculumLevels } = useApp()
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [fullName, setFullName] = useState('Dr. Sarah Jenkins')
-  const [academyName, setAcademyName] = useState('Centaurus Academy')
-  const [subject, setSubject] = useState('Physics')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Step 2 Curriculum levels
-  const [levels, setLevels] = useState([
-    { name: 'IGCSE Physics', description: 'CIE 0625 Core & Extended Syllabus' },
-    { name: 'A-Level Physics', description: 'CIE 9702 Advanced Syllabus' },
-    { name: 'Edexcel Physics', description: 'Edexcel International A-Level' },
+  // Step 1 State
+  const [fullName, setFullName] = useState(profile?.full_name || 'Dr. Sarah Jenkins')
+  const [academyName, setAcademyName] = useState(profile?.academy_name || 'Centaurus Academy')
+
+  // Step 2 State (Curriculum Levels)
+  const [levels, setLevels] = useState<string[]>([
+    'Cambridge A-Level Physics (9702)',
+    'Cambridge IGCSE Physics (0625)',
+    'Edexcel Physics',
   ])
+  const [newLevelInput, setNewLevelInput] = useState('')
 
-  // Step 3 Class
-  const [className, setClassName] = useState('Grade 12 Physics (A-Level)')
+  // Step 3 State (First Class)
+  const [className, setClassName] = useState('Year 13 A-Level Physics')
+  const [selectedLevelName, setSelectedLevelName] = useState('Cambridge A-Level Physics (9702)')
   const [academicYear, setAcademicYear] = useState('2025-2026')
-  const [isSaving, setIsSaving] = useState(false)
+
+  function handleAddLevel() {
+    if (!newLevelInput.trim()) return
+    if (!levels.includes(newLevelInput.trim())) {
+      setLevels([...levels, newLevelInput.trim()])
+    }
+    setNewLevelInput('')
+  }
+
+  function handleRemoveLevel(index: number) {
+    if (levels.length <= 1) return
+    setLevels(levels.filter((_, i) => i !== index))
+  }
 
   async function handleCompleteSetup() {
-    setIsSaving(true)
+    setIsSubmitting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.replace('/upload')
-        return
-      }
+      const teacherId = user?.id || profile?.id || 'demo-teacher'
 
       // Update teacher profile
-      await supabase.from('teachers').upsert({
-        id: user.id,
-        full_name: fullName,
-        email: user.email!,
-        academy_name: academyName,
-        subject,
-      })
+      await supabase
+        .from('teachers')
+        .upsert({
+          id: teacherId,
+          full_name: fullName.trim(),
+          email: user?.email || profile?.email || 'sarah.jenkins@centaurus.edu',
+          academy_name: academyName.trim(),
+        })
 
-      // Insert curriculum levels
-      for (const lvl of levels) {
-        if (lvl.name.trim()) {
-          await supabase.from('curriculum_levels').insert({
-            teacher_id: user.id,
-            name: lvl.name.trim(),
-            description: lvl.description.trim() || null,
-          })
-        }
-      }
+      // Create curriculum levels
+      const levelRows = levels.map((lvl) => ({
+        teacher_id: teacherId,
+        name: lvl,
+      }))
 
-      // Insert initial class
+      const { data: createdLevels } = await supabase
+        .from('curriculum_levels')
+        .insert(levelRows)
+        .select()
+
+      const levelId = createdLevels?.[0]?.id
+
+      // Create initial class
       await supabase.from('classes').insert({
-        teacher_id: user.id,
-        name: className.trim() || 'Grade 12 Physics',
-        academic_year: academicYear,
+        teacher_id: teacherId,
+        curriculum_level_id: levelId,
+        name: className.trim(),
+        academic_year: academicYear.trim(),
+        is_active: true,
       })
 
-      router.replace('/upload')
-    } catch {
-      router.replace('/upload')
+      await refreshProfile()
+      await refreshCurriculumLevels()
+
+      router.push('/question-bank/upload?setup=complete')
+    } catch (err) {
+      console.warn('Setup warning:', err)
+      router.push('/question-bank/upload?setup=complete')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-bg-base p-4">
-      <div className="card w-full max-w-xl p-8 bg-white border border-border shadow-xl">
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between text-xs font-semibold text-text-muted mb-2">
-            <span>STEP {step} OF 3</span>
-            <span>{step === 1 ? 'Profile' : step === 2 ? 'Curriculum Levels' : 'First Class'}</span>
+    <div className="flex items-center justify-center min-h-screen bg-bg-base p-4">
+      <div className="card w-full max-w-xl p-8 shadow-xl bg-white border border-border">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
+          <div className="p-2.5 bg-accent-light text-accent rounded-lg">
+            <Zap size={24} />
           </div>
-          <div className="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent transition-all duration-300"
-              style={{ width: `${(step / 3) * 100}%` }}
-            />
+          <div>
+            <h1 className="text-xl font-extrabold text-text-primary">Faculty Setup Wizard</h1>
+            <p className="text-xs text-text-muted">Configure your PhysicsDesk teaching environment</p>
           </div>
         </div>
 
-        {/* Step 1 */}
-        {step === 1 && (
-          <div className="flex flex-col gap-4 animate-fade-in">
-            <h2 className="text-xl font-bold text-text-primary">Welcome to PhysicsDesk</h2>
-            <p className="text-xs text-text-secondary">
-              Confirm your teaching profile details for Centaurus Academy.
-            </p>
+        {/* Stepper Progress Bar */}
+        <div className="flex items-center justify-between mb-8 relative">
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-border w-full -z-10" />
+          
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all ${
+                step > i
+                  ? 'bg-success text-white'
+                  : step === i
+                  ? 'bg-accent text-white ring-4 ring-accent-light'
+                  : 'bg-bg-subtle text-text-muted border border-border'
+              }`}
+            >
+              {step > i ? <Check size={16} /> : i}
+            </div>
+          ))}
+        </div>
 
+        {/* Step 1: Teacher Profile */}
+        {step === 1 && (
+          <div className="flex flex-col gap-4">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">Step 1: Faculty Information</h2>
             <div className="form-group">
               <label className="form-label">Full Name</label>
               <input
@@ -100,104 +137,85 @@ export default function SetupPage() {
                 className="form-input"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                placeholder="Dr. Sarah Jenkins"
                 required
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Academy Name</label>
+              <label className="form-label">Academy / School Name</label>
               <input
                 type="text"
                 className="form-input"
                 value={academyName}
                 onChange={(e) => setAcademyName(e.target.value)}
+                placeholder="Centaurus Academy"
                 required
               />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Primary Subject</label>
-              <input
-                type="text"
-                className="form-input"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                required
-              />
-            </div>
-
-            <button
-              className="btn btn-primary justify-center py-2.5 mt-2"
-              onClick={() => setStep(2)}
-            >
-              Next: Configure Curricula →
-            </button>
-          </div>
-        )}
-
-        {/* Step 2 */}
-        {step === 2 && (
-          <div className="flex flex-col gap-4 animate-fade-in">
-            <h2 className="text-xl font-bold text-text-primary">Physics Curricula</h2>
-            <p className="text-xs text-text-secondary">
-              Pre-loaded syllabi for your academy classes. Add or modify as needed.
-            </p>
-
-            <div className="flex flex-col gap-3">
-              {levels.map((lvl, idx) => (
-                <div key={idx} className="flex gap-2">
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={lvl.name}
-                    onChange={(e) => {
-                      const updated = [...levels]
-                      updated[idx].name = e.target.value
-                      setLevels(updated)
-                    }}
-                    placeholder="Curriculum Level"
-                  />
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={lvl.description}
-                    onChange={(e) => {
-                      const updated = [...levels]
-                      updated[idx].description = e.target.value
-                      setLevels(updated)
-                    }}
-                    placeholder="Syllabus Description"
-                  />
-                </div>
-              ))}
             </div>
 
             <button
               type="button"
-              className="btn btn-secondary btn-sm w-fit"
-              onClick={() => setLevels([...levels, { name: '', description: '' }])}
+              className="btn btn-primary w-full justify-center mt-4 py-2.5"
+              onClick={() => setStep(2)}
             >
-              <Plus size={14} /> Add Curriculum Level
+              Next: Curriculum Levels <ArrowRight size={16} />
             </button>
+          </div>
+        )}
 
-            <div className="flex justify-between mt-4">
-              <button className="btn btn-ghost" onClick={() => setStep(1)}>
+        {/* Step 2: Curriculum Levels */}
+        {step === 2 && (
+          <div className="flex flex-col gap-4">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">Step 2: Curriculum Boards & Levels</h2>
+            <p className="text-xs text-text-secondary">Pre-loaded levels for Physics exam paper generation. Customize as needed.</p>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Add level (e.g. Edexcel International A-Level)"
+                value={newLevelInput}
+                onChange={(e) => setNewLevelInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLevel())}
+              />
+              <button type="button" className="btn btn-secondary px-3" onClick={handleAddLevel}>
+                <Plus size={16} /> Add
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2 mt-2 max-h-48 overflow-y-auto">
+              {levels.map((lvl, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-border bg-bg-subtle text-xs font-medium">
+                  <span>{lvl}</span>
+                  {levels.length > 1 && (
+                    <button
+                      type="button"
+                      className="text-text-muted hover:text-danger p-1"
+                      onClick={() => handleRemoveLevel(idx)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button type="button" className="btn btn-outline flex-1 justify-center" onClick={() => setStep(1)}>
                 Back
               </button>
-              <button className="btn btn-primary" onClick={() => setStep(3)}>
-                Next: Create First Class →
+              <button type="button" className="btn btn-primary flex-1 justify-center" onClick={() => setStep(3)}>
+                Next: First Class <ArrowRight size={16} />
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 3 */}
+        {/* Step 3: First Class */}
         {step === 3 && (
-          <div className="flex flex-col gap-4 animate-fade-in">
-            <h2 className="text-xl font-bold text-text-primary">Add Your First Class</h2>
-            <p className="text-xs text-text-secondary">
-              Create a class section to start importing LMS data and tracking performance.
-            </p>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">Step 3: Setup Initial Class Roster</h2>
 
             <div className="form-group">
               <label className="form-label">Class Name</label>
@@ -206,9 +224,24 @@ export default function SetupPage() {
                 className="form-input"
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                placeholder="e.g. Grade 12 Physics (A-Level)"
+                placeholder="Year 13 A-Level Physics"
                 required
               />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Curriculum Level</label>
+              <select
+                className="form-input"
+                value={selectedLevelName}
+                onChange={(e) => setSelectedLevelName(e.target.value)}
+              >
+                {levels.map((lvl, i) => (
+                  <option key={i} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="form-group">
@@ -222,16 +255,17 @@ export default function SetupPage() {
               />
             </div>
 
-            <div className="flex justify-between mt-4">
-              <button className="btn btn-ghost" onClick={() => setStep(2)}>
+            <div className="flex gap-2 mt-4">
+              <button type="button" className="btn btn-outline flex-1 justify-center" onClick={() => setStep(2)}>
                 Back
               </button>
               <button
-                className="btn btn-primary justify-center py-2.5 px-6"
+                type="button"
+                className="btn btn-primary flex-1 justify-center py-2.5"
                 onClick={handleCompleteSetup}
-                disabled={isSaving}
+                disabled={isSubmitting}
               >
-                {isSaving ? 'Finishing Setup...' : 'Finish Setup & Open Upload Hub 🚀'}
+                {isSubmitting ? 'Saving setup...' : 'Complete & Start Uploading'}
               </button>
             </div>
           </div>

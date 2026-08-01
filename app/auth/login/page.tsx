@@ -2,13 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase'
 import { Zap, Lock, Mail, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
-  const supabase = createClient()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -77,7 +75,7 @@ export default function LoginPage() {
     setIsLoading(true)
     setTimeout(() => {
       router.push('/dashboard')
-    }, 400)
+    }, 300)
   }
 
   return (
@@ -88,8 +86,8 @@ export default function LoginPage() {
           <div className="p-3 bg-accent-light text-accent rounded-xl mb-3">
             <Zap size={28} />
           </div>
-          <h1 className="text-2xl font-extrabold text-text-primary">PhysicsDesk</h1>
-          <p className="text-xs text-text-muted mt-1">Centaurus Academy Teacher Assistant</p>
+          <h1 className="text-2xl font-extrabold text-text-primary tracking-tight">PhysicsDesk</h1>
+          <p className="text-xs text-text-muted mt-1 font-medium">Centaurus Academy Teacher Assistant</p>
         </div>
 
         {/* Tab Switcher */}
@@ -159,7 +157,7 @@ export default function LoginPage() {
           >
             {isLoading ? (
               <>
-                <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Processing...
               </>
             ) : mode === 'signup' ? (

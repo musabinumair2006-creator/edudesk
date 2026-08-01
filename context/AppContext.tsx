@@ -1,18 +1,20 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase'
 import type { Session, User } from '@supabase/supabase-js'
-import type { TeacherProfile, CurriculumLevel, Class } from '@/lib/types'
+import type { TeacherProfile, CurriculumLevel, Question } from '@/lib/types'
 
 interface AppContextType {
   session: Session | null
   user: User | null
   profile: TeacherProfile | null
   curriculumLevels: CurriculumLevel[]
-  activeClass: Class | null
+  activePaperQuestions: Question[]
   isLoading: boolean
-  setActiveClass: (cls: Class | null) => void
+  addQuestionToPaper: (q: Question) => void
+  removeQuestionFromPaper: (qId: string) => void
+  clearActivePaper: () => void
   refreshProfile: () => Promise<void>
   refreshCurriculumLevels: () => Promise<void>
   signOut: () => Promise<void>
@@ -22,74 +24,139 @@ const DEFAULT_PROFILE: TeacherProfile = {
   id: 'demo-teacher',
   full_name: 'Dr. Sarah Jenkins',
   email: 'sarah.jenkins@centaurus.edu',
-  subject: 'Physics',
   academy_name: 'Centaurus Academy',
   created_at: new Date().toISOString(),
 }
+
+const DEFAULT_LEVELS: CurriculumLevel[] = [
+  { id: 'lvl-1', teacher_id: 'demo-teacher', name: 'Cambridge A-Level Physics (9702)', created_at: new Date().toISOString() },
+  { id: 'lvl-2', teacher_id: 'demo-teacher', name: 'Cambridge IGCSE Physics (0625)', created_at: new Date().toISOString() },
+  { id: 'lvl-3', teacher_id: 'demo-teacher', name: 'Edexcel Physics', created_at: new Date().toISOString() },
+]
 
 const AppContext = createContext<AppContextType>({
   session: null,
   user: null,
   profile: DEFAULT_PROFILE,
-  curriculumLevels: [],
-  activeClass: null,
+  curriculumLevels: DEFAULT_LEVELS,
+  activePaperQuestions: [],
   isLoading: true,
-  setActiveClass: () => {},
+  addQuestionToPaper: () => {},
+  removeQuestionFromPaper: () => {},
+  clearActivePaper: () => {},
   refreshProfile: async () => {},
   refreshCurriculumLevels: async () => {},
   signOut: async () => {},
 })
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const supabase = createClient()
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<TeacherProfile | null>(DEFAULT_PROFILE)
-  const [curriculumLevels, setCurriculumLevels] = useState<CurriculumLevel[]>([])
-  const [activeClass, setActiveClass] = useState<Class | null>(null)
+  const [curriculumLevels, setCurriculumLevels] = useState<CurriculumLevel[]>(DEFAULT_LEVELS)
+  const [activePaperQuestions, setActivePaperQuestions] = useState<Question[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from('teachers')
-      .select('*')
-      .eq('id', userId)
-      .single()
+  // Restore active paper questions from localStorage on client load
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('physicsdesk_active_paper_questions')
+      if (saved) {
+        setActivePaperQuestions(JSON.parse(saved))
+      }
+    } catch (e) {
+      // Ignored
+    }
+  }, [])
 
-    if (!error && data) {
-      setProfile(data as TeacherProfile)
-    } else {
+  const saveActivePaperQuestions = (qs: Question[]) => {
+    setActivePaperQuestions(qs)
+    try {
+      localStorage.setItem('physicsdesk_active_paper_questions', JSON.stringify(qs))
+    } catch (e) {
+      // Ignored
+    }
+  }
+
+  const addQuestionToPaper = useCallback((q: Question) => {
+    setActivePaperQuestions((prev) => {
+      if (prev.some((existing) => existing.id === q.id)) return prev
+      const updated = [...prev, q]
+      try {
+        localStorage.setItem('physicsdesk_active_paper_questions', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+  }, [])
+
+  const removeQuestionFromPaper = useCallback((qId: string) => {
+    setActivePaperQuestions((prev) => {
+      const updated = prev.filter((q) => q.id !== qId)
+      try {
+        localStorage.setItem('physicsdesk_active_paper_questions', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+  }, [])
+
+  const clearActivePaper = useCallback(() => {
+    saveActivePaperQuestions([])
+  }, [])
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (!error && data) {
+        setProfile(data as TeacherProfile)
+      } else {
+        setProfile(DEFAULT_PROFILE)
+      }
+    } catch {
       setProfile(DEFAULT_PROFILE)
     }
-  }, [supabase])
+  }, [])
 
-  const fetchCurriculumLevels = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('curriculum_levels')
-      .select('*')
-      .order('created_at', { ascending: true })
+  const fetchCurriculumLevels = useCallback(async (userId?: string) => {
+    try {
+      let query = supabase.from('curriculum_levels').select('*').order('created_at', { ascending: true })
+      if (userId) {
+        query = query.eq('teacher_id', userId)
+      }
+      const { data, error } = await query
 
-    if (!error && data) {
-      setCurriculumLevels(data as CurriculumLevel[])
+      if (!error && data && data.length > 0) {
+        setCurriculumLevels(data as CurriculumLevel[])
+      } else {
+        setCurriculumLevels(DEFAULT_LEVELS)
+      }
+    } catch {
+      setCurriculumLevels(DEFAULT_LEVELS)
     }
-  }, [supabase])
+  }, [])
 
   const refreshProfile = useCallback(async () => {
     if (user) await fetchProfile(user.id)
   }, [user, fetchProfile])
 
   const refreshCurriculumLevels = useCallback(async () => {
-    await fetchCurriculumLevels()
-  }, [fetchCurriculumLevels])
+    await fetchCurriculumLevels(user?.id)
+  }, [user, fetchCurriculumLevels])
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch {}
     setSession(null)
     setUser(null)
     setProfile(DEFAULT_PROFILE)
-    setCurriculumLevels([])
-    setActiveClass(null)
-  }, [supabase])
+    setCurriculumLevels(DEFAULT_LEVELS)
+    clearActivePaper()
+  }, [clearActivePaper])
 
   useEffect(() => {
     let subscription: { unsubscribe: () => void } | null = null
@@ -97,41 +164,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async function initAuth() {
       try {
         const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
-        const session = data?.session ?? null
-        setSession(session)
-        setUser(session?.user ?? null)
+        const currentSession = data?.session ?? null
+        setSession(currentSession)
+        setUser(currentSession?.user ?? null)
 
-        if (session?.user) {
+        if (currentSession?.user) {
           await Promise.all([
-            fetchProfile(session.user.id),
-            fetchCurriculumLevels(),
+            fetchProfile(currentSession.user.id),
+            fetchCurriculumLevels(currentSession.user.id),
           ]).catch(() => {})
+        } else {
+          setProfile(DEFAULT_PROFILE)
+          setCurriculumLevels(DEFAULT_LEVELS)
         }
       } catch (err) {
-        console.warn('Supabase auth init warning:', err)
+        console.warn('Auth init warning:', err)
       } finally {
         setIsLoading(false)
       }
 
       try {
-        const res = supabase.auth.onAuthStateChange(async (_event, session) => {
-          setSession(session)
-          setUser(session?.user ?? null)
-          if (session?.user) {
+        const res = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+          setSession(newSession)
+          setUser(newSession?.user ?? null)
+          if (newSession?.user) {
             await Promise.all([
-              fetchProfile(session.user.id),
-              fetchCurriculumLevels(),
+              fetchProfile(newSession.user.id),
+              fetchCurriculumLevels(newSession.user.id),
             ]).catch(() => {})
           } else {
             setProfile(DEFAULT_PROFILE)
-            setCurriculumLevels([])
-            setActiveClass(null)
+            setCurriculumLevels(DEFAULT_LEVELS)
           }
           setIsLoading(false)
         })
         subscription = res.data.subscription
       } catch (err) {
-        console.warn('Supabase listener warning:', err)
+        console.warn('Auth listener warning:', err)
       }
     }
 
@@ -140,7 +209,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (subscription) subscription.unsubscribe()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchProfile, fetchCurriculumLevels])
 
   return (
     <AppContext.Provider
@@ -149,9 +218,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         user,
         profile: profile || DEFAULT_PROFILE,
         curriculumLevels,
-        activeClass,
+        activePaperQuestions,
         isLoading,
-        setActiveClass,
+        addQuestionToPaper,
+        removeQuestionFromPaper,
+        clearActivePaper,
         refreshProfile,
         refreshCurriculumLevels,
         signOut,

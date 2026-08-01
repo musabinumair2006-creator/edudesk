@@ -4,27 +4,25 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 
-export default function HomePage() {
-  const { session, profile, isLoading } = useApp()
+export default function RootPage() {
   const router = useRouter()
+  const { session, isLoading } = useApp()
 
   useEffect(() => {
-    if (isLoading) return
-    if (!session) {
-      router.replace('/auth/login')
-    } else if (profile && !profile.academy_name) {
-      router.replace('/auth/setup')
-    } else {
-      router.replace('/dashboard')
+    if (!isLoading) {
+      if (session) {
+        router.replace('/dashboard')
+      } else {
+        router.replace('/auth/login')
+      }
     }
-  }, [session, profile, isLoading, router])
+  }, [session, isLoading, router])
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-bg-base">
-      <div className="flex flex-col items-center gap-4">
-        <div className="text-2xl font-bold text-text-primary">⚡ PhysicsDesk</div>
-        <div className="text-xs text-text-muted">Centaurus Academy Assistant</div>
-        <div className="spinner spinner-lg" />
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs text-text-muted font-medium">Loading PhysicsDesk...</p>
       </div>
     </div>
   )
