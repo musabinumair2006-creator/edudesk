@@ -9,45 +9,71 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleAuth(e: React.FormEvent) {
     e.preventDefault()
     setErrorMsg(null)
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim(),
-      })
+      if (mode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: password.trim(),
+          options: {
+            data: {
+              full_name: email.split('@')[0],
+            },
+          },
+        })
 
-      if (error) {
-        setErrorMsg(error.message)
-        setIsLoading(false)
-        return
-      }
+        if (error) {
+          setErrorMsg(error.message)
+          setIsLoading(false)
+          return
+        }
 
-      if (data.user) {
-        const { data: profile } = await supabase
-          .from('teachers')
-          .select('academy_name')
-          .eq('id', data.user.id)
-          .single()
-
-        if (!profile?.academy_name) {
+        if (data.user) {
           router.replace('/auth/setup')
-        } else {
-          router.replace('/dashboard')
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        })
+
+        if (error) {
+          setErrorMsg(error.message)
+          setIsLoading(false)
+          return
+        }
+
+        if (data.user) {
+          const { data: profile } = await supabase
+            .from('teachers')
+            .select('academy_name')
+            .eq('id', data.user.id)
+            .single()
+
+          if (!profile?.academy_name) {
+            router.replace('/auth/setup')
+          } else {
+            router.replace('/dashboard')
+          }
         }
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'An unexpected authentication error occurred.')
       setIsLoading(false)
     }
+  }
+
+  function handleDemoLogin() {
+    setIsLoading(true)
+    setTimeout(() => {
+      router.push('/dashboard')
+    }, 400)
   }
 
   return (
@@ -62,6 +88,28 @@ export default function LoginPage() {
           <p className="text-xs text-text-muted mt-1">Centaurus Academy Teacher Assistant</p>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex rounded-lg bg-bg-subtle p-1 mb-6 border border-border">
+          <button
+            type="button"
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              mode === 'login' ? 'bg-white text-accent shadow-sm' : 'text-text-secondary hover:text-text-primary'
+            }`}
+            onClick={() => setMode('login')}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              mode === 'signup' ? 'bg-white text-accent shadow-sm' : 'text-text-secondary hover:text-text-primary'
+            }`}
+            onClick={() => setMode('signup')}
+          >
+            Create Account
+          </button>
+        </div>
+
         {errorMsg && (
           <div className="p-3 rounded-md bg-danger-light text-danger text-xs mb-4 flex items-center gap-2 border border-danger">
             <AlertCircle size={16} className="shrink-0" />
@@ -69,7 +117,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+        <form onSubmit={handleAuth} className="flex flex-col gap-4">
           <div className="form-group">
             <label className="form-label">Email Address</label>
             <div className="relative">
@@ -108,13 +156,31 @@ export default function LoginPage() {
             {isLoading ? (
               <>
                 <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
-                Signing in...
+                Processing...
               </>
+            ) : mode === 'signup' ? (
+              'Create Faculty Account'
             ) : (
               'Sign In to PhysicsDesk'
             )}
           </button>
         </form>
+
+        <div className="relative my-6 text-center">
+          <hr className="border-border" />
+          <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-white px-2 text-[10px] text-text-muted uppercase font-bold tracking-wider">
+            Or Quick Access
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary w-full py-2.5 justify-center text-xs font-semibold text-accent border-accent/30 hover:bg-accent-light"
+          onClick={handleDemoLogin}
+          disabled={isLoading}
+        >
+          ⚡ Enter Instant Demo Assistant
+        </button>
 
         <div className="mt-6 text-center text-xs text-text-muted border-t border-border pt-4">
           PhysicsDesk is reserved for authorized Centaurus Academy faculty.
