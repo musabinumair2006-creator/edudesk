@@ -126,6 +126,16 @@ export default function UploadPage() {
     }
   }
 
+  function handleSampleFile(type: 'grades' | 'attendance') {
+    const csvContent = type === 'grades'
+      ? `Student Name,Roll Number,Midterm Score,Total Marks,Grade\nAlexander Wright,P-101,88,100,A\nBeatrice Chen,P-102,94,100,A*\nCarlos Mendez,P-103,62,100,C\nDina Patel,P-104,79,100,B\nEthan Hunt,P-105,85,100,A`
+      : `Student Name,Roll Number,July 28,July 29,July 30,Status\nAlexander Wright,P-101,Present,Present,Present,Present\nBeatrice Chen,P-102,Present,Present,Present,Present\nCarlos Mendez,P-103,Absent,Present,Absent,Absent\nDina Patel,P-104,Present,Present,Present,Present\nEthan Hunt,P-105,Present,Absent,Present,Present`
+
+    const fileName = type === 'grades' ? 'Physics_Midterm_Grades_Sample.csv' : 'Physics_July_Attendance_Sample.csv'
+    const sampleFile = new File([csvContent], fileName, { type: 'text/csv' })
+    handleFileSelected(sampleFile)
+  }
+
   return (
     <AppShell>
       <Header
@@ -141,6 +151,26 @@ export default function UploadPage() {
           </h2>
 
           <DropZone onFileSelected={handleFileSelected} disabled={stage === 'uploading' || stage === 'reading' || stage === 'understanding'} />
+
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-border">
+            <span className="text-xs text-text-muted font-medium">Or test with 1-click sample file:</span>
+            <button
+              type="button"
+              className="btn btn-secondary py-1 px-3 text-xs text-accent hover:bg-accent-light border-accent/20 font-medium"
+              onClick={() => handleSampleFile('grades')}
+              disabled={stage === 'uploading' || stage === 'reading' || stage === 'understanding'}
+            >
+              📄 Try Sample Grade Sheet (.csv)
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary py-1 px-3 text-xs text-accent hover:bg-accent-light border-accent/20 font-medium"
+              onClick={() => handleSampleFile('attendance')}
+              disabled={stage === 'uploading' || stage === 'reading' || stage === 'understanding'}
+            >
+              📊 Try Sample Attendance Sheet (.csv)
+            </button>
+          </div>
 
           {/* Processing Status Bar */}
           {stage !== 'idle' && (
