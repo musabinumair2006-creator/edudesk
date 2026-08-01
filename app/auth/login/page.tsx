@@ -9,6 +9,10 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [mode, setMode] = useState<'login' | 'signup'>('login')
 
   async function handleAuth(e: React.FormEvent) {
