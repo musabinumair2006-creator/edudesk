@@ -68,10 +68,17 @@ export default function UploadPage() {
         body: formData,
       })
 
-      const data = await res.json()
-      if (data.error) {
+      let data: any = {}
+      const rawText = await res.text()
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        data = { error: 'Server error processing file. Please verify the file is a valid Excel sheet, CSV, PDF, or Image.' }
+      }
+
+      if (!res.ok || data.error) {
         setStage('failed')
-        setErrorMessage(data.error)
+        setErrorMessage(data.error || `Server returned error (${res.status})`)
         return
       }
 

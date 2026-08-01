@@ -81,25 +81,32 @@ export async function POST(req: NextRequest) {
     }
 
     // Save upload row in Supabase
-    const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    const teacherId = session?.user?.id || 'teacher-1'
+    let uploadId = 'upl-' + Date.now()
+    try {
+      const supabase = await createClient()
+      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+      const teacherId = sessionData?.session?.user?.id || 'teacher-1'
 
-    const { data: uploadRow } = await supabase
-      .from('uploads')
-      .insert({
-        teacher_id: teacherId,
-        file_name: fileName,
-        file_type: mimeType,
-        storage_url: `uploads/${Date.now()}_${fileName}`,
-        detected_data_type: parsedResult.detected_type,
-        parsed_data: parsedResult,
-        parse_status: 'complete',
-      })
-      .select()
-      .single()
+      const { data: uploadRow } = await supabase
+        .from('uploads')
+        .insert({
+          teacher_id: teacherId,
+          file_name: fileName,
+          file_type: mimeType,
+          storage_url: `uploads/${Date.now()}_${fileName}`,
+          detected_data_type: parsedResult.detected_type,
+          parsed_data: parsedResult,
+          parse_status: 'complete',
+        })
+        .select()
+        .single()
 
-    const uploadId = uploadRow?.id || 'upl-' + Date.now()
+      if (uploadRow?.id) {
+        uploadId = uploadRow.id
+      }
+    } catch (dbErr) {
+      console.warn('Supabase upload record save warning:', dbErr)
+    }
 
     return NextResponse.json({
       upload_id: uploadId,
