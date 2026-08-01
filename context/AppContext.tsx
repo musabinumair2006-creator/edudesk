@@ -92,38 +92,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        Promise.all([
-          fetchProfile(session.user.id),
-          fetchCurriculumLevels(),
-        ]).finally(() => setIsLoading(false))
-      } else {
-        setIsLoading(false)
-      }
-    })
+    let subscription: { unsubscribe: () => void } | null = null
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    async function initAuth() {
+      try {
+        const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+        const session = data?.session ?? null
         setSession(session)
         setUser(session?.user ?? null)
+
         if (session?.user) {
           await Promise.all([
             fetchProfile(session.user.id),
             fetchCurriculumLevels(),
-          ])
-        } else {
-          setProfile(DEFAULT_PROFILE)
-          setCurriculumLevels([])
-          setActiveClass(null)
+          ]).catch(() => {})
         }
+      } catch (err) {
+        console.warn('Supabase auth init warning:', err)
+      } finally {
         setIsLoading(false)
       }
-    )
 
-    return () => subscription.unsubscribe()
+      try {
+        const res = supabase.auth.onAuthStateChange(async (_event, session) => {
+          setSession(session)
+          setUser(session?.user ?? null)
+          if (session?.user) {
+            await Promise.all([
+              fetchProfile(session.user.id),
+              fetchCurriculumLevels(),
+            ]).catch(() => {})
+          } else {
+            setProfile(DEFAULT_PROFILE)
+            setCurriculumLevels([])
+            setActiveClass(null)
+          }
+          setIsLoading(false)
+        })
+        subscription = res.data.subscription
+      } catch (err) {
+        console.warn('Supabase listener warning:', err)
+      }
+    }
+
+    initAuth()
+
+    return () => {
+      if (subscription) subscription.unsubscribe()
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
